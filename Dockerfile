@@ -22,6 +22,9 @@ RUN apt-get update \
         liblzma-dev \
         uuid-dev \
         xz-utils \
+        tcl-dev \
+        tk-dev \
+        libx11-dev \
         qemu-system-x86 \
         qemu-system-arm \
     && rm -rf /var/lib/apt/lists/*
@@ -37,5 +40,6 @@ RUN python tools/test.py
 RUN python tools/test_unicode.py
 RUN python tools/test_language.py
 RUN python tools/test_bootstrap.py
+RUN python tools/test_desktop.py
 
 CMD ["python", "jetos.py", "doctor"]
