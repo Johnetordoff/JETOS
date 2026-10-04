@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
-"""Create, patch, build, and test the editable JETOS language fork.
+"""Create, patch, build, and test the editable JETOS Language fork.
 
 JETOS owns this orchestration in Python. CPython's existing configure/make
-machinery is treated as imported bootstrap infrastructure until it is replaced.
+machinery is imported bootstrap infrastructure until it is replaced.
 """
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
-import shutil
 import subprocess
-import sys
 
 UPSTREAM_REPOSITORY = "https://github.com/python/cpython.git"
-UPSTREAM_COMMIT = "9d22a5334bd5273962adceeb697a1337e9a0ca21"
+UPSTREAM_VERSION = "3.14.8"
+UPSTREAM_COMMIT = "8e6e75d9102e39bed2a2b279203a396741180f12"
 FORK_BRANCH = "jetos-language"
-JETOS_LANGUAGE_VERSION = "0.1"
+JETOS_LANGUAGE_VERSION = "0.2"
 
 
 def run(
@@ -58,8 +58,9 @@ def patch_source(source: Path) -> list[Path]:
         "#ifndef Py_JETOS_H\n"
         "#define Py_JETOS_H\n"
         "\n"
-        "/* JETOS language fork identity. */\n"
+        "/* JETOS Language fork identity. */\n"
         f'#define JETOS_LANGUAGE_VERSION "{JETOS_LANGUAGE_VERSION}"\n'
+        f'#define JETOS_CPYTHON_VERSION "{UPSTREAM_VERSION}"\n'
         f'#define JETOS_CPYTHON_BASE "{UPSTREAM_COMMIT}"\n'
         "\n"
         "#endif /* Py_JETOS_H */\n"
@@ -77,26 +78,28 @@ def patch_source(source: Path) -> list[Path]:
             raise SystemExit("cannot locate Python.h include in Python/sysmodule.c")
         text = text.replace(
             needle,
-            needle + '#include "jetos.h"          // JETOS language identity\n',
+            needle + '#include "jetos.h"          // JETOS Language identity\n',
             1,
         )
 
-    old_impl = '#define _PY_IMPL_NAME "cpython"'
-    new_impl = '#define _PY_IMPL_NAME "jetos"'
+    # Python 3.14.x defines the implementation identity as NAME in sysmodule.c.
+    old_impl = '#define NAME "cpython"'
+    new_impl = '#define NAME "jetos"'
     if old_impl in text:
         text = text.replace(old_impl, new_impl, 1)
     elif new_impl not in text:
-        raise SystemExit("cannot locate _PY_IMPL_NAME in Python/sysmodule.c")
+        raise SystemExit("cannot locate CPython implementation name in Python/sysmodule.c")
 
-    marker = 'SET_SYS_FROM_STRING("version", Py_GetVersion());'
-    jetos_line = (
-        '    SET_SYS_FROM_STRING("jetos_language_version", '
-        'JETOS_LANGUAGE_VERSION);'
+    version_marker = '    SET_SYS_FROM_STRING("version", Py_GetVersion());'
+    jetos_lines = (
+        version_marker
+        + '\n    SET_SYS_FROM_STRING("jetos_language_version", JETOS_LANGUAGE_VERSION);'
+        + '\n    SET_SYS_FROM_STRING("jetos_python_base_version", JETOS_CPYTHON_VERSION);'
     )
-    if jetos_line not in text:
-        if marker not in text:
+    if 'SET_SYS_FROM_STRING("jetos_language_version"' not in text:
+        if version_marker not in text:
             raise SystemExit("cannot locate sys.version initialization")
-        text = text.replace(marker, marker + "\n" + jetos_line, 1)
+        text = text.replace(version_marker, jetos_lines, 1)
 
     current = sysmodule.read_text(encoding="utf-8")
     if current != text:
@@ -115,19 +118,22 @@ def clone_fork(destination: Path, *, upstream: str = UPSTREAM_REPOSITORY) -> Non
     run(["git", "switch", "-c", FORK_BRANCH], cwd=destination)
 
     changed = patch_source(destination)
-    run(["git", "add", *[str(path.relative_to(destination)) for path in changed]], cwd=destination)
+    run(
+        ["git", "add", *[str(path.relative_to(destination)) for path in changed]],
+        cwd=destination,
+    )
     run(
         [
             "git",
             "-c", "user.name=JETOS Bootstrap",
             "-c", "user.email=jetos@localhost",
             "commit",
-            "-m", "Start editable JETOS language fork",
+            "-m", f"Start JETOS Language from Python {UPSTREAM_VERSION}",
         ],
         cwd=destination,
     )
-    print(f"editable JETOS language fork: {destination}")
-    print(f"upstream base: {UPSTREAM_COMMIT}")
+    print(f"editable JETOS Language fork: {destination}")
+    print(f"stable Python base: {UPSTREAM_VERSION} ({UPSTREAM_COMMIT})")
     print(f"branch: {FORK_BRANCH}")
 
 
@@ -142,10 +148,9 @@ def source_status(source: Path) -> None:
     text = (source / "Python/sysmodule.c").read_text(encoding="utf-8")
     print(f"head: {head}")
     print(f"branch: {branch or '(detached)'}")
-    implementation_is_jetos = '#define _PY_IMPL_NAME "jetos"' in text
-    identity_header_exists = (source / "Include/jetos.h").exists()
-    print(f"JETOS implementation name: {'yes' if implementation_is_jetos else 'no'}")
-    print(f"JETOS identity header: {'yes' if identity_header_exists else 'no'}")
+    print(f"stable Python base: {UPSTREAM_VERSION}")
+    print(f"JETOS implementation name: {'yes' if '#define NAME \"jetos\"' in text else 'no'}")
+    print(f"JETOS identity header: {'yes' if (source / 'Include/jetos.h').exists() else 'no'}")
 
 
 def configure_and_build(
@@ -154,20 +159,21 @@ def configure_and_build(
     *,
     prefix: Path,
     jobs: int,
+    free_threaded: bool,
 ) -> None:
     require_source_tree(source)
     build.mkdir(parents=True, exist_ok=True)
     configure = source.resolve() / "configure"
-    run(
-        [
-            str(configure),
-            f"--prefix={prefix.resolve()}",
-            "--with-ensurepip=no",
-        ],
-        cwd=build,
-    )
+    command = [
+        str(configure),
+        f"--prefix={prefix.resolve()}",
+        "--with-ensurepip=no",
+    ]
+    if free_threaded:
+        command.append("--disable-gil")
+    run(command, cwd=build)
     run(["make", f"-j{jobs}"], cwd=build)
-    print(f"JETOS language build: {build / 'python'}")
+    print(f"JETOS Language build: {build / 'python'}")
 
 
 def smoke(build: Path) -> None:
@@ -177,10 +183,19 @@ def smoke(build: Path) -> None:
     code = (
         "import sys; "
         "assert sys.implementation.name == 'jetos', sys.implementation; "
-        "assert sys.jetos_language_version == '0.1'; "
+        "assert sys.jetos_language_version == '0.2'; "
+        f"assert sys.jetos_python_base_version == '{UPSTREAM_VERSION}'; "
+        "assert sys.version_info[:3] == (3, 14, 8), sys.version_info; "
+        "assert sys.version_info.releaselevel == 'final'; "
+        "assert sys.implementation.supports_isolated_interpreters; "
+        "from concurrent import interpreters; "
+        "i = interpreters.create(); "
+        "assert i.call(lambda: 6 * 7) == 42; i.close(); "
         "print('implementation:', sys.implementation.name); "
         "print('cache tag:', sys.implementation.cache_tag); "
         "print('language version:', sys.jetos_language_version); "
+        "print('stable Python base:', sys.jetos_python_base_version); "
+        "print('isolated interpreters: PASS'); "
         "print('runtime:', sys.version)"
     )
     run([str(python), "-c", code])
@@ -198,26 +213,31 @@ def main() -> int:
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    fork = sub.add_parser("fork", help="clone pinned CPython and create an editable JETOS branch")
+    fork = sub.add_parser("fork", help="clone latest pinned stable CPython and create JETOS Language")
     fork.add_argument("destination", type=Path)
     fork.add_argument("--upstream", default=UPSTREAM_REPOSITORY)
 
-    patch = sub.add_parser("patch", help="apply JETOS identity to an existing CPython source tree")
+    patch = sub.add_parser("patch", help="apply JETOS identity to an existing stable CPython source tree")
     patch.add_argument("source", type=Path)
 
-    status = sub.add_parser("status", help="show source-fork identity")
+    status = sub.add_parser("status", help="show JETOS Language source identity")
     status.add_argument("source", type=Path)
 
-    build = sub.add_parser("build", help="configure and compile the JETOS language fork")
+    build = sub.add_parser("build", help="configure and compile JETOS Language")
     build.add_argument("source", type=Path)
     build.add_argument("--build", type=Path, default=Path(".build/jetos-language"))
     build.add_argument("--prefix", type=Path, default=Path(".build/jetos-language-install"))
     build.add_argument("--jobs", type=int, default=None)
+    build.add_argument(
+        "--free-threaded",
+        action="store_true",
+        help="also configure CPython's free-threaded --disable-gil build mode",
+    )
 
     test = sub.add_parser("smoke", help="verify the built interpreter identifies as JETOS")
     test.add_argument("--build", type=Path, default=Path(".build/jetos-language"))
 
-    inst = sub.add_parser("install", help="install the configured JETOS language build")
+    inst = sub.add_parser("install", help="install the configured JETOS Language build")
     inst.add_argument("--build", type=Path, default=Path(".build/jetos-language"))
 
     args = parser.parse_args()
@@ -229,7 +249,7 @@ def main() -> int:
         for path in changed:
             print(path)
         if not changed:
-            print("JETOS language patch already applied")
+            print("JETOS Language patch already applied")
     elif args.command == "status":
         source_status(args.source)
     elif args.command == "build":
@@ -237,7 +257,8 @@ def main() -> int:
             args.source,
             args.build,
             prefix=args.prefix,
-            jobs=args.jobs or (os_cpu_count() or 1),
+            jobs=args.jobs or (os.cpu_count() or 1),
+            free_threaded=args.free_threaded,
         )
     elif args.command == "smoke":
         smoke(args.build)
@@ -245,12 +266,6 @@ def main() -> int:
         install(args.build)
 
     return 0
-
-
-def os_cpu_count() -> int | None:
-    # Kept behind a tiny function so the build decision remains testable.
-    import os
-    return os.cpu_count()
 
 
 if __name__ == "__main__":
