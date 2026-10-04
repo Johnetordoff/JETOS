@@ -2,7 +2,7 @@
 
 JETOS is a source-oriented, Python-first operating-system project whose long-term goal is to replace the software stack on a target machine rather than merely run as an application inside another operating system.
 
-**Project state:** early bootstrap with a Python-built root filesystem/initramfs and a working CPython-shell dry run.
+**Project state:** early bootstrap with a clone-to-build development environment, an editable JETOS language fork, Python-built root filesystem/initramfs, and a working language-shell dry run.
 
 The current repository is intentionally small. It proves pieces of the design in Docker and in native C/Python tests. It is **not yet a standalone bootable distribution**. The next major milestone is a hypervisor-bootable JETOS image with its own selected Linux kernel, root filesystem, PID 1/bootstrap path, CPython runtime, and console.
 
@@ -43,7 +43,7 @@ The distinction between **implemented now** and **planned architecture** matters
 | Sanitizer tests | Implemented | AddressSanitizer + UndefinedBehaviorSanitizer run for the C experiment |
 | Dunicode | Implemented, v0.2 | Unicode-compatible scalar layer plus reversible character retirement/removal policy |
 | Unicode / UTF-8 | Implemented, smoke-tested | Strict UTF-8 round trips, multilingual text, emoji, combining characters, invalid UTF-8 rejection, filesystem cases |
-| Docker test image | Implemented | Reproducible userspace/test container |
+| Docker test image | Implemented | Reproducible userspace/test container |\n| Portable development environment | Implemented | `python jetos.py dev` builds the development container, pinned language/kernel sources, rootfs/initramfs, and launches QEMU |\n| Host setup tooling | Implemented | Python can plan/install prerequisites on macOS, common Linux distributions, and Windows |\n| Repository text export | Implemented | `python jetos.py text` prints every tracked UTF-8 JETOS source/spec file |
 | Python rootfs builder | Implemented | CPython assembles the root filesystem and native runtime dependencies |
 | Python initramfs writer | Implemented | CPython writes the newc CPIO archive and deterministic gzip stream |
 | First CPython-shell dry run | Passed | Assembled rootfs enters a `jetos>` CPython interpreter |
@@ -989,3 +989,166 @@ Once such a repository exists, the local `jetos-language` branch is ordinary Git
 > If the language needs to change for JETOS, change the language.
 
 > No compiler, interpreter, parser, runtime, standard library, or build tool is considered uneditable merely because it came from upstream.
+
+
+---
+
+## 27. Clone-to-boot development environment
+
+The JETOS repository is intended to be sufficient as the human-editable project entry point.
+
+The repository contains the JETOS-authored text: Python control logic, readable C experiments, Docker development recipe, Git configuration, and this single canonical architecture/specification document. Large imported upstream source trees and generated binaries are **not** checked into JETOS merely to make the repository self-contained. Instead, their exact source identities are pinned and JETOS can reconstruct them into `.build/`.
+
+Pinned native/source inputs for the current development boot are:
+
+```text
+Linux stable repository: https://github.com/gregkh/linux.git
+Linux version: 6.12.96
+Linux commit: 6d15a1029d425b15c59463910ebdccc4afe760d6
+
+CPython ancestor repository: https://github.com/python/cpython.git
+CPython ancestor commit: 9d22a5334bd5273962adceeb697a1337e9a0ca21
+JETOS language branch: jetos-language
+```
+
+### One-command path
+
+After cloning JETOS:
+
+```bash
+git clone https://github.com/Johnetordoff/JETOS.git
+cd JETOS
+python jetos.py doctor
+python jetos.py dev
+```
+
+`python jetos.py dev` uses Docker by default so the build environment is Linux even when the host is macOS or Windows. The sequence is:
+
+```text
+JETOS checkout
+    ↓
+Docker development environment
+    ↓
+pinned CPython ancestor
+    ↓
+JETOS language source fork
+    ↓
+JETOS language compiler/runtime build
+    ↓
+pinned Linux stable source
+    ↓
+JETOS Python kernel configuration/build orchestration
+    ↓
+JETOS Python rootfs + initramfs generation
+    ↓
+QEMU virtual machine
+    ↓
+JETOS-selected Linux kernel
+    ↓
+Python /init as PID 1
+    ↓
+JETOS language interpreter
+    ↓
+jetos>
+```
+
+The QEMU guest is launched with **no virtual NIC** in this first configuration. Its reported networking-OFF state therefore corresponds to the virtual hardware actually presented to the guest.
+
+On Linux, the same work can be run without Docker:
+
+```bash
+python jetos.py dev --native
+```
+
+If `/dev/kvm` is available, the launcher uses KVM. Otherwise QEMU uses TCG software virtualization/emulation. macOS and Windows use the Docker-hosted Linux builder and portable QEMU/TCG path by default.
+
+### Host prerequisite installation
+
+JETOS has host setup tooling rather than requiring a handwritten setup document.
+
+Inspect the host:
+
+```bash
+python jetos.py doctor
+```
+
+Show the proposed installation commands without executing them:
+
+```bash
+python jetos.py setup --plan
+```
+
+Execute the supported package-manager plan:
+
+```bash
+python jetos.py setup --install --yes
+```
+
+Current host families:
+
+- **macOS:** Homebrew-based Git/QEMU setup plus Docker Desktop;
+- **Linux:** apt, dnf, pacman, and zypper families, including native compiler/kernel-build dependencies, QEMU, and Docker;
+- **Windows:** winget-based Git and Docker Desktop setup; JETOS itself builds in the Linux development container.
+
+This is deliberately a **development/VM installation tool**, not a physical-disk eraser. Bare-metal installation should not be enabled until the guest boot, storage, recovery, and hardware-support paths are proven.
+
+### All JETOS text
+
+To inspect the entire tracked UTF-8 textual repository in one stream:
+
+```bash
+python jetos.py text
+```
+
+That command asks Git for the tracked file list and prints every UTF-8 text file with a filename boundary. Generated root filesystems, kernels, compiled interpreters, and imported source checkouts live under `.build/` and remain reproducible rather than being mistaken for JETOS-authored source.
+
+### x86-64 and ARM64
+
+The first-boot kernel policy and QEMU launcher now understand both:
+
+- x86-64, using the 8250 serial console and `bzImage`;
+- ARM64/AArch64, using the PL011 serial console and the kernel `Image`.
+
+This is important for development portability: an Intel/AMD Linux or Windows development environment can build and run the x86-64 path, while an Apple Silicon/Linux ARM64 development environment can build and run the ARM64 path without forcing JETOS itself to become architecture-specific above the native boundary.
+
+### Python PID 1 and hardware-facing filesystems
+
+The generated `/init` no longer depends on a dry-run-provided `PYTHONPATH`; it explicitly locates `/jetos/src` itself.
+
+The Python PID-1 code invokes Linux's `mount(2)` interface through `ctypes` and mounts:
+
+- `devtmpfs` on `/dev`;
+- `proc` on `/proc`;
+- `sysfs` on `/sys`.
+
+That gives JETOS's Python layer access to the kernel's hardware/process/device view without invoking an external `mount` command or a shell script.
+
+### Development bootstrap boundary
+
+The first complete build still contains imported bootstrap machinery:
+
+- Linux Kbuild/make;
+- CPython's configure/make build system;
+- GCC/C compiler and native binutils;
+- libc/dynamic loader;
+- QEMU.
+
+These are not declared permanent. They are explicitly the current substrate from which JETOS can iteratively remove, rewrite, or replace dependencies. JETOS-owned orchestration remains Python.
+
+### Current verification
+
+The new fast bootstrap test verifies without compiling a kernel that:
+
+- AMD64/x86-64 and ARM64 architecture names normalize correctly;
+- the correct architecture-specific serial-console kernel requirements are selected;
+- JETOS's Python newc CPIO writer emits the expected format;
+- generated `/init` is a Python entry point;
+- generated `/init` locates the JETOS Python package without inherited host state.
+
+Current local result:
+
+```text
+JETOS bootstrap tooling: 12 checks passed
+```
+
+The full kernel + QEMU boot still needs to be executed on a development host with Docker/QEMU available; this execution environment cannot install/run QEMU itself. The repository now contains the complete path needed to perform that test rather than merely describing it.
