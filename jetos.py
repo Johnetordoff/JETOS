@@ -29,6 +29,8 @@ def tests() -> None:
         "test_bootstrap.py",
         "test_capabilities.py",
         "test_desktop.py",
+        "test_policy.py",
+        "test_interpreters.py",
     ):
         python_tool(script, [])
 
@@ -85,6 +87,42 @@ def print_all_text() -> None:
         print(text, end="" if text.endswith("\n") else "\n")
 
 
+def source_environment() -> dict[str, str]:
+    environment = os.environ.copy()
+    source_path = str(ROOT / "src")
+    existing = environment.get("PYTHONPATH")
+    environment["PYTHONPATH"] = (
+        source_path if not existing else source_path + os.pathsep + existing
+    )
+    return environment
+
+
+def interpreter_diagnostics(per_device: bool, run_services: bool) -> int:
+    command = [
+        sys.executable,
+        "-c",
+        (
+            "from jetos import hardware; "
+            "from jetos.interpreters import "
+            "InterpreterSupervisor, plan_services, supported; "
+            "snapshot=hardware.discover(); "
+            f"plans=plan_services(snapshot, per_device={per_device!r}); "
+            "print('isolated interpreters:', supported()); "
+            "[print(p) for p in plans]; "
+            + (
+                "s=InterpreterSupervisor(); "
+                "s.start_plans(plans); "
+                "print('running:', s.services); "
+                "[print(name, s.request(name, ('ping',))) for name in s.services]; "
+                "s.close_all(); "
+                if run_services
+                else ""
+            )
+        ),
+    ]
+    return subprocess.call(command, cwd=ROOT, env=source_environment())
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="JETOS development, build, and VM entry point"
@@ -99,6 +137,21 @@ def main() -> int:
     setup.add_argument("--yes", action="store_true")
 
     sub.add_parser("test", help="run repository tests")
+    sub.add_parser(
+        "language-check",
+        help="verify the pinned JETOS Language base is Python.org's latest stable release",
+    )
+
+    interp = sub.add_parser(
+        "interpreters",
+        help="show the capability-to-subinterpreter plan for this machine",
+    )
+    interp.add_argument("--per-device", action="store_true")
+    interp.add_argument(
+        "--run",
+        action="store_true",
+        help="actually start and ping planned services (requires Python 3.14+)",
+    )
 
     dev = sub.add_parser(
         "dev",
@@ -136,32 +189,26 @@ def main() -> int:
         python_tool("host.py", forwarded)
     elif args.command == "test":
         tests()
+    elif args.command == "language-check":
+        python_tool("python_release.py", ["check"])
+    elif args.command == "interpreters":
+        return interpreter_diagnostics(args.per_device, args.run)
     elif args.command == "dev":
         if args.native:
             python_tool("dev.py", ["build" if args.build_only else "run"])
         else:
             docker_dev(args.build_only)
     elif args.command == "gui":
-        command = [
-            sys.executable,
-            "-m",
-            "jetos.desktop",
-        ]
+        command = [sys.executable, "-m", "jetos.desktop"]
         if args.geometry:
             command.extend(["--geometry", args.geometry])
         if args.fullscreen:
             command.append("--fullscreen")
         if args.no_splash:
             command.append("--no-splash")
-        environment = os.environ.copy()
-        source_path = str(ROOT / "src")
-        existing = environment.get("PYTHONPATH")
-        environment["PYTHONPATH"] = (
-            source_path if not existing else source_path + os.pathsep + existing
-        )
         print("+", " ".join(command), flush=True)
         raise SystemExit(
-            subprocess.call(command, cwd=ROOT, env=environment)
+            subprocess.call(command, cwd=ROOT, env=source_environment())
         )
     elif args.command == "text":
         print_all_text()

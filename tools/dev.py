@@ -22,7 +22,8 @@ LINUX_REPOSITORY = "https://github.com/gregkh/linux.git"
 LINUX_VERSION = "6.12.96"
 LINUX_COMMIT = "6d15a1029d425b15c59463910ebdccc4afe760d6"
 CPYTHON_REPOSITORY = "https://github.com/python/cpython.git"
-CPYTHON_COMMIT = "9d22a5334bd5273962adceeb697a1337e9a0ca21"
+CPYTHON_VERSION = "3.14.8"
+CPYTHON_COMMIT = "8e6e75d9102e39bed2a2b279203a396741180f12"
 
 
 def run(
@@ -119,7 +120,7 @@ def prepare_sources() -> None:
             "user.email=jetos@localhost",
             "commit",
             "-m",
-            "Start editable JETOS language fork",
+            f"Start JETOS Language from Python {CPYTHON_VERSION}",
         ], cwd=LANGUAGE_SOURCE)
 
 
@@ -132,7 +133,7 @@ def find_language_runtime() -> tuple[Path, Path]:
         if path.is_file() and "config" not in path.name
     ]
     if not candidates:
-        raise SystemExit("JETOS language runtime was not installed")
+        raise SystemExit("JETOS Language runtime was not installed")
     runtime = candidates[-1]
     stdlib_result = run(
         [
@@ -144,13 +145,20 @@ def find_language_runtime() -> tuple[Path, Path]:
     )
     stdlib = Path(stdlib_result.stdout.strip())
     if not stdlib.is_dir():
-        raise SystemExit(f"JETOS language stdlib not found: {stdlib}")
+        raise SystemExit(f"JETOS Language stdlib not found: {stdlib}")
     return runtime, stdlib
 
 
 def build_language() -> tuple[Path, Path]:
     bindir = LANGUAGE_PREFIX / "bin"
-    runtime_candidates = list(bindir.glob("python3.*")) if bindir.exists() else []
+    runtime_candidates = (
+        [
+            path for path in bindir.glob("python3.*")
+            if path.is_file() and "config" not in path.name
+        ]
+        if bindir.exists()
+        else []
+    )
     if not runtime_candidates:
         run([
             sys.executable,
@@ -183,6 +191,9 @@ def build_language() -> tuple[Path, Path]:
         (
             "import sys; "
             "assert sys.implementation.name == 'jetos'; "
+            f"assert sys.version_info[:3] == (3, 14, 8); "
+            "assert sys.version_info.releaselevel == 'final'; "
+            "assert sys.implementation.supports_isolated_interpreters; "
             "print(sys.implementation)"
         ),
     ])
@@ -233,6 +244,10 @@ def tests() -> None:
         "test_unicode.py",
         "test_language.py",
         "test_bootstrap.py",
+        "test_desktop.py",
+        "test_capabilities.py",
+        "test_policy.py",
+        "test_interpreters.py",
     ):
         run([sys.executable, f"tools/{script}"])
 
@@ -253,6 +268,7 @@ def build_all() -> tuple[Path, Path, Path]:
     print("\nJETOS development artifacts")
     print(f"  architecture: {target_arch}")
     print(f"  language:     {runtime}")
+    print(f"  Python base:  {CPYTHON_VERSION} stable")
     print(f"  kernel:       {kernel} ({kernel.stat().st_size} bytes)")
     print(f"  initramfs:    {INITRAMFS} ({INITRAMFS.stat().st_size} bytes)")
     return runtime, kernel, INITRAMFS
@@ -275,7 +291,7 @@ def boot(kernel: Path, initramfs: Path) -> None:
 
 def status() -> None:
     print(f"Linux {LINUX_VERSION}: {LINUX_COMMIT}")
-    print(f"CPython ancestor: {CPYTHON_COMMIT}")
+    print(f"Python stable base {CPYTHON_VERSION}: {CPYTHON_COMMIT}")
     print(f"target architecture: {arch()}")
     for path in (
         LANGUAGE_SOURCE,
