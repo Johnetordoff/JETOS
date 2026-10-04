@@ -526,10 +526,20 @@ def qemu_boot(
     target_arch: str,
 ) -> None:
     target_arch = normalize_arch(target_arch)
+    accel = (
+        "kvm"
+        if Path("/dev/kvm").exists()
+        else "tcg"
+    )
+
     if target_arch == "x86_64":
         executable = "qemu-system-x86_64"
         console = "ttyS0"
-        machine_args: list[str] = []
+        machine_args: list[str] = (
+            ["-cpu", "host"]
+            if accel == "kvm"
+            else []
+        )
     else:
         executable = "qemu-system-aarch64"
         console = "ttyAMA0"
@@ -537,7 +547,7 @@ def qemu_boot(
             "-machine",
             "virt",
             "-cpu",
-            "max",
+            "host" if accel == "kvm" else "max",
         ]
 
     qemu = shutil.which(executable)
@@ -545,12 +555,6 @@ def qemu_boot(
         raise SystemExit(
             f"{executable} is not installed"
         )
-
-    accel = (
-        "kvm"
-        if Path("/dev/kvm").exists()
-        else "tcg"
-    )
 
     os.execvp(
         qemu,
