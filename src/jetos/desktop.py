@@ -1,18 +1,23 @@
 """JETOS reference desktop shell.
 
-The first renderer uses tkinter because it is the GUI API shipped with the
-JETOS Language's CPython ancestor. Layout policy is independent from tkinter
-so arbitrary display geometries can be tested headlessly.
+Tkinter renders the first desktop, while layout and application selection are
+owned by JETOS. The Start menu is generated from hardware capabilities that
+Linux exposes through the JETOS hardware registry.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
 import argparse
-import math
+import code
+import contextlib
+import io
 import os
+import pprint
 import re
 from typing import Callable
+
+from jetos import apps, hardware
 
 try:
     import tkinter as tk
@@ -70,7 +75,7 @@ def layout_for(width: int, height: int) -> DesktopLayout:
     if width < MIN_WIDTH or height < MIN_HEIGHT:
         raise ValueError("display dimensions must be positive")
 
-    # 640x480 is the visual reference only. It is not a required resolution.
+    # 640x480 is a visual reference, never a required display mode.
     scale = max(0.25, min(width / 640.0, height / 480.0))
 
     taskbar_height = _clamp(round(30 * scale), 1, height)
@@ -79,11 +84,7 @@ def layout_for(width: int, height: int) -> DesktopLayout:
     margin = _clamp(round(3 * scale), 0, max(0, taskbar_height // 3))
     content_height = max(1, taskbar_height - 2 * margin)
 
-    start_width = _clamp(
-        round(56 * scale),
-        1,
-        max(1, width),
-    )
+    start_width = _clamp(round(56 * scale), 1, max(1, width))
     start_button = Rect(
         margin,
         taskbar.y + margin,
@@ -91,11 +92,7 @@ def layout_for(width: int, height: int) -> DesktopLayout:
         min(content_height, taskbar_height),
     )
 
-    clock_width = _clamp(
-        round(72 * scale),
-        1,
-        max(1, width),
-    )
+    clock_width = _clamp(round(72 * scale), 1, max(1, width))
     clock_x = max(0, width - clock_width - margin)
     clock = Rect(
         clock_x,
@@ -131,7 +128,7 @@ def _font_size(scale: float, base: int, minimum: int = 5) -> int:
 
 
 class Desktop:
-    """Tk renderer for the JETOS desktop layout."""
+    """Tk renderer for the JETOS desktop layout and capability applications."""
 
     def __init__(
         self,
@@ -141,11 +138,10 @@ class Desktop:
         fullscreen: bool = False,
         splash_ms: int = 850,
         now: Callable[[], datetime] = datetime.now,
+        machine_snapshot: dict[str, object] | None = None,
     ) -> None:
         if tk is None:
-            raise RuntimeError(
-                "tkinter is unavailable in this JETOS Language runtime"
-            )
+            raise RuntimeError("tkinter is unavailable in this JETOS Language runtime")
 
         self.root = tk.Tk()
         self.root.title("JETOS")
@@ -153,6 +149,12 @@ class Desktop:
         self.root.resizable(True, True)
         self.now = now
         self.splash_ms = max(0, splash_ms)
+        self.machine_snapshot = machine_snapshot or hardware.discover()
+        self.app_specs = apps.available(self.machine_snapshot)
+        self._app_by_title = {app.title: app for app in self.app_specs}
+        self._clock_item: int | None = None
+        self._fullscreen = fullscreen
+        self._last_layout: DesktopLayout | None = None
 
         if fullscreen:
             self.root.attributes("-fullscreen", True)
@@ -175,12 +177,27 @@ class Desktop:
         )
         self.canvas.pack(fill="both", expand=True)
 
+        self.start_menu = tk.Menu(
+            self.root,
+            tearoff=False,
+            bg="#c0c0c0",
+            fg="#000000",
+            activebackground="#000080",
+            activeforeground="#ffffff",
+        )
+        for app in self.app_specs:
+            self.start_menu.add_command(
+                label=app.title,
+                command=lambda selected=app: self._launch(selected),
+            )
+
         self.root.bind("<Configure>", self._on_configure)
         self.root.bind("<Escape>", lambda _event: self.root.destroy())
         self.root.bind("<F11>", self._toggle_fullscreen)
-        self._fullscreen = fullscreen
+        self.canvas.tag_bind("start", "<Button-1>", self._show_start_menu)
 
         self._show_splash()
+        self.root.after(1000, self._refresh_clock)
 
     def _toggle_fullscreen(self, _event: object) -> None:
         self._fullscreen = not self._fullscreen
@@ -228,6 +245,7 @@ class Desktop:
         *,
         fill: str = "#c0c0c0",
         sunken: bool = False,
+        tags: tuple[str, ...] = (),
     ) -> None:
         self.canvas.create_rectangle(
             rect.x,
@@ -236,6 +254,7 @@ class Desktop:
             rect.bottom - 1,
             fill=fill,
             outline=fill,
+            tags=tags,
         )
         bright = "#ffffff"
         shadow = "#808080"
@@ -244,14 +263,15 @@ class Desktop:
         left = shadow if sunken else bright
         bottom = bright if sunken else dark
         right = bright if sunken else dark
-        self.canvas.create_line(rect.x, rect.y, rect.right - 1, rect.y, fill=top)
-        self.canvas.create_line(rect.x, rect.y, rect.x, rect.bottom - 1, fill=left)
+        self.canvas.create_line(rect.x, rect.y, rect.right - 1, rect.y, fill=top, tags=tags)
+        self.canvas.create_line(rect.x, rect.y, rect.x, rect.bottom - 1, fill=left, tags=tags)
         self.canvas.create_line(
             rect.x,
             rect.bottom - 1,
             rect.right - 1,
             rect.bottom - 1,
             fill=bottom,
+            tags=tags,
         )
         self.canvas.create_line(
             rect.right - 1,
@@ -259,6 +279,7 @@ class Desktop:
             rect.right - 1,
             rect.bottom - 1,
             fill=right,
+            tags=tags,
         )
 
     def _draw_background(self, layout: DesktopLayout) -> None:
@@ -271,9 +292,6 @@ class Desktop:
             fill="#008080",
             outline="#008080",
         )
-
-        # Very cheap screensaver-style diagonal texture. Spacing scales but is
-        # always derived from the actual display dimensions.
         spacing = max(12, round(40 * layout.scale))
         limit = layout.screen.width + max(0, layout.taskbar.y)
         for offset in range(-layout.taskbar.y, limit, spacing):
@@ -285,25 +303,28 @@ class Desktop:
                 fill="#007878",
             )
 
+    def _clock_text(self) -> str:
+        if os.name == "nt":
+            return self.now().strftime("%I:%M %p").lstrip("0")
+        return self.now().strftime("%-I:%M %p")
+
     def _draw_taskbar(self, layout: DesktopLayout) -> None:
         self._bevel(layout.taskbar)
-
-        self._bevel(layout.start_button)
+        self._bevel(layout.start_button, tags=("start",))
         self.canvas.create_text(
             layout.start_button.x + layout.start_button.width // 2,
             layout.start_button.y + layout.start_button.height // 2,
             text="Start",
             font=("TkDefaultFont", _font_size(layout.scale, 9), "bold"),
             fill="#000000",
+            tags=("start",),
         )
 
         self._bevel(layout.clock, sunken=True)
-        self.canvas.create_text(
+        self._clock_item = self.canvas.create_text(
             layout.clock.x + layout.clock.width // 2,
             layout.clock.y + layout.clock.height // 2,
-            text=self.now().strftime("%-I:%M %p")
-            if os.name != "nt"
-            else self.now().strftime("%I:%M %p").lstrip("0"),
+            text=self._clock_text(),
             font=("TkDefaultFont", _font_size(layout.scale, 8)),
             fill="#000000",
         )
@@ -311,11 +332,7 @@ class Desktop:
     def _draw_welcome(self, layout: DesktopLayout) -> None:
         rect = layout.welcome_window
         self._bevel(rect)
-        title_height = _clamp(
-            round(22 * layout.scale),
-            1,
-            rect.height,
-        )
+        title_height = _clamp(round(22 * layout.scale), 1, rect.height)
         title = Rect(rect.x + 3, rect.y + 3, max(1, rect.width - 6), title_height)
         self.canvas.create_rectangle(
             title.x,
@@ -333,30 +350,141 @@ class Desktop:
             fill="#ffffff",
             font=("TkDefaultFont", _font_size(layout.scale, 9), "bold"),
         )
-
         self.canvas.create_text(
             rect.x + rect.width // 2,
-            rect.y + max(title_height + 8, rect.height // 2),
+            rect.y + max(title_height + 8, rect.height // 2 - _font_size(layout.scale, 8)),
             text="Welcome to JETOS",
             fill="#000000",
             font=("TkDefaultFont", _font_size(layout.scale, 12)),
+        )
+        self.canvas.create_text(
+            rect.x + rect.width // 2,
+            rect.y + max(title_height + 8, rect.height // 2 + _font_size(layout.scale, 12)),
+            text=f"{len(self.app_specs)} applications from detected capabilities",
+            fill="#000000",
+            font=("TkDefaultFont", _font_size(layout.scale, 8)),
         )
 
     def _draw_desktop(self) -> None:
         self.canvas.delete("all")
         layout = layout_for(self.width, self.height)
+        self._last_layout = layout
         self._draw_background(layout)
         self._draw_welcome(layout)
         self._draw_taskbar(layout)
 
-        # The clock is intentionally cheap. Redrawing once a second is enough
-        # for the reference shell and keeps UI behavior simple.
+    def _refresh_clock(self) -> None:
+        try:
+            exists = self.root.winfo_exists()
+        except Exception:
+            return
+        if not exists:
+            return
+        if self.splash_ms == 0 and self._clock_item is not None:
+            self.canvas.itemconfigure(self._clock_item, text=self._clock_text())
         self.root.after(1000, self._refresh_clock)
 
-    def _refresh_clock(self) -> None:
-        if not self.root.winfo_exists() or self.splash_ms != 0:
-            return
-        self._draw_desktop()
+    def _show_start_menu(self, event: object) -> None:
+        self.start_menu.update_idletasks()
+        x_root = int(getattr(event, "x_root", self.root.winfo_rootx()))
+        y_root = int(getattr(event, "y_root", self.root.winfo_rooty()))
+        height = self.start_menu.winfo_reqheight()
+        try:
+            self.start_menu.tk_popup(x_root, max(self.root.winfo_rooty(), y_root - height))
+        finally:
+            self.start_menu.grab_release()
+
+    def _window(self, title: str, width: int = 440, height: int = 300):
+        window = tk.Toplevel(self.root)
+        window.title(title)
+        window.configure(bg="#c0c0c0")
+        window.geometry(f"{width}x{height}")
+        return window
+
+    def _launch(self, app: apps.AppSpec) -> None:
+        if app.key == "terminal":
+            self._open_terminal()
+        elif app.key == "system":
+            self._open_system()
+        else:
+            self._open_capability(app)
+
+    def _open_terminal(self) -> None:
+        window = self._window("JETOS Terminal", 560, 360)
+        transcript = tk.Text(
+            window,
+            bg="#000000",
+            fg="#c0c0c0",
+            insertbackground="#ffffff",
+            font=("TkFixedFont", 10),
+            wrap="word",
+        )
+        transcript.pack(fill="both", expand=True, padx=4, pady=(4, 0))
+        entry = tk.Entry(window, font=("TkFixedFont", 10))
+        entry.pack(fill="x", padx=4, pady=4)
+        console = code.InteractiveConsole(
+            {
+                "hardware": hardware,
+                "snapshot": self.machine_snapshot,
+            }
+        )
+        state = {"prompt": "jetos> "}
+
+        def append(text: str) -> None:
+            transcript.insert("end", text)
+            transcript.see("end")
+
+        append("JETOS Language terminal\n")
+        append("hardware and snapshot are preloaded.\n\n")
+
+        def execute(_event: object | None = None) -> str:
+            command = entry.get()
+            entry.delete(0, "end")
+            append(state["prompt"] + command + "\n")
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
+                more = console.push(command)
+            append(output.getvalue())
+            state["prompt"] = ".....> " if more else "jetos> "
+            return "break"
+
+        entry.bind("<Return>", execute)
+        entry.focus_set()
+
+    def _open_system(self) -> None:
+        window = self._window("JETOS System", 620, 420)
+        text = tk.Text(window, bg="#ffffff", fg="#000000", font=("TkFixedFont", 9))
+        text.pack(fill="both", expand=True, padx=4, pady=4)
+        text.insert("1.0", pprint.pformat(self.machine_snapshot, width=88, sort_dicts=True))
+        text.configure(state="disabled")
+
+    def _open_capability(self, app: apps.AppSpec) -> None:
+        details = apps.capability_details(app, self.machine_snapshot)
+        window = self._window(f"JETOS {app.title}", 480, 260)
+        present = bool(details.get("present"))
+        active = bool(details.get("active"))
+        evidence = details.get("evidence", ())
+        lines = [
+            f"Capability: {app.capability}",
+            f"Present: {'yes' if present else 'no'}",
+            f"Active: {'yes' if active else 'no'}",
+            "",
+            "Kernel evidence:",
+        ]
+        if isinstance(evidence, (tuple, list)) and evidence:
+            lines.extend(f"  {item}" for item in evidence)
+        else:
+            lines.append("  none")
+        label = tk.Label(
+            window,
+            text="\n".join(lines),
+            justify="left",
+            anchor="nw",
+            bg="#c0c0c0",
+            fg="#000000",
+            font=("TkFixedFont", 9),
+        )
+        label.pack(fill="both", expand=True, padx=12, pady=12)
 
     def run(self) -> None:
         self.root.mainloop()
@@ -367,6 +495,7 @@ def run(
     *,
     fullscreen: bool = False,
     splash_ms: int = 850,
+    machine_snapshot: dict[str, object] | None = None,
 ) -> None:
     width = height = None
     if geometry is not None:
@@ -376,6 +505,7 @@ def run(
         height,
         fullscreen=fullscreen,
         splash_ms=splash_ms,
+        machine_snapshot=machine_snapshot,
     ).run()
 
 
