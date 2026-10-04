@@ -1,7 +1,29 @@
 FROM python:3.13-slim
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends bash gcc libc6-dev \
+    && apt-get install -y --no-install-recommends \
+        git \
+        gcc \
+        make \
+        binutils \
+        libc6-dev \
+        bc \
+        bison \
+        flex \
+        libssl-dev \
+        libelf-dev \
+        dwarves \
+        pkg-config \
+        libffi-dev \
+        zlib1g-dev \
+        libbz2-dev \
+        libreadline-dev \
+        libsqlite3-dev \
+        liblzma-dev \
+        uuid-dev \
+        xz-utils \
+        qemu-system-x86 \
+        qemu-system-arm \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /jetos
@@ -14,5 +36,6 @@ ENV LC_ALL=C.UTF-8
 RUN python tools/test.py
 RUN python tools/test_unicode.py
 RUN python tools/test_language.py
+RUN python tools/test_bootstrap.py
 
-CMD ["/bin/bash"]
+CMD ["python", "jetos.py", "doctor"]
