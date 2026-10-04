@@ -43,7 +43,7 @@ def plan() -> list[list[str]]:
                 "Install Homebrew from its official site, then rerun this command."
             )
         return [
-            ["brew", "install", "git", "qemu"],
+            ["brew", "install", "git", "qemu", "python-tk@3.13"],
             ["brew", "install", "--cask", "docker"],
         ]
 
@@ -65,7 +65,7 @@ def plan() -> list[list[str]]:
             "gcc", "make", "binutils", "libc6-dev", "bc", "bison", "flex",
             "libssl-dev", "libelf-dev", "dwarves", "pkg-config", "libffi-dev",
             "zlib1g-dev", "libbz2-dev", "libreadline-dev", "libsqlite3-dev",
-            "liblzma-dev", "uuid-dev", "xz-utils",
+            "liblzma-dev", "uuid-dev", "xz-utils", "tcl-dev", "tk-dev", "libx11-dev",
         ]
         return [
             prefix_admin(["apt-get", "update"]),
@@ -77,7 +77,7 @@ def plan() -> list[list[str]]:
             "gcc", "make", "binutils", "bc", "bison", "flex", "openssl-devel",
             "elfutils-libelf-devel", "dwarves", "pkgconf-pkg-config", "libffi-devel",
             "zlib-devel", "bzip2-devel", "readline-devel", "sqlite-devel",
-            "xz-devel", "libuuid-devel",
+            "xz-devel", "libuuid-devel", "tcl-devel", "tk-devel", "libX11-devel",
         ]
         return [prefix_admin(["dnf", "install", "-y", *packages])]
     if manager == "pacman":
@@ -85,7 +85,7 @@ def plan() -> list[list[str]]:
             "git", "docker", "qemu-system-x86", "qemu-system-aarch64",
             "base-devel", "bc", "bison", "flex", "openssl", "libelf", "pahole",
             "pkgconf", "libffi", "zlib", "bzip2", "readline", "sqlite", "xz",
-            "util-linux",
+            "util-linux", "tk", "tcl", "libx11",
         ]
         return [prefix_admin(["pacman", "-S", "--needed", *packages])]
     if manager == "zypper":
@@ -93,7 +93,7 @@ def plan() -> list[list[str]]:
             "git", "docker", "qemu-x86", "qemu-arm", "gcc", "make", "binutils",
             "bc", "bison", "flex", "libopenssl-devel", "libelf-devel", "dwarves",
             "pkg-config", "libffi-devel", "zlib-devel", "libbz2-devel",
-            "readline-devel", "sqlite3-devel", "xz-devel", "libuuid-devel",
+            "readline-devel", "sqlite3-devel", "xz-devel", "libuuid-devel", "tcl-devel", "tk-devel", "libX11-devel",
         ]
         return [prefix_admin(["zypper", "--non-interactive", "install", *packages])]
 
@@ -105,6 +105,12 @@ def doctor() -> int:
     machine = platform.machine()
     print(f"host: {host} {machine}")
     print(f"python: {sys.version.split()[0]} ({sys.executable})")
+    try:
+        import tkinter
+    except Exception as error:
+        print(f"tkinter: unavailable ({error})")
+    else:
+        print(f"tkinter: available (Tk {tkinter.TkVersion})")
     commands = ["git", "docker"]
     if host == "Linux":
         commands.extend(["gcc", "make"])

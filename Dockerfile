@@ -1,4 +1,4 @@
-FROM python:3.13-slim
+FROM python:3.14.8-slim
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -22,6 +22,9 @@ RUN apt-get update \
         liblzma-dev \
         uuid-dev \
         xz-utils \
+        tcl-dev \
+        tk-dev \
+        libx11-dev \
         qemu-system-x86 \
         qemu-system-arm \
     && rm -rf /var/lib/apt/lists/*
@@ -37,5 +40,10 @@ RUN python tools/test.py
 RUN python tools/test_unicode.py
 RUN python tools/test_language.py
 RUN python tools/test_bootstrap.py
+RUN python tools/test_capabilities.py
+RUN python tools/test_desktop.py
+RUN python tools/test_policy.py
+RUN python tools/test_interpreters.py
+RUN python tools/python_release.py check --offline-ok
 
 CMD ["python", "jetos.py", "doctor"]
