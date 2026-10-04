@@ -44,5 +44,6 @@ RUN python tools/test_capabilities.py
 RUN python tools/test_desktop.py
 RUN python tools/test_policy.py
 RUN python tools/test_interpreters.py
+RUN python tools/python_release.py check --offline-ok
 
 CMD ["python", "jetos.py", "doctor"]
