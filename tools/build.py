@@ -1,16 +1,12 @@
 #!/usr/bin/env python3
-"""JETOS Python-owned build and boot orchestration.
-
-No JETOS-owned shell scripts or Makefiles are required for the first boot path.
-Imported native tools (Linux Kbuild, a C compiler, QEMU) are invoked explicitly
-when their native job is required.
-"""
+"""JETOS Python-owned rootfs, kernel, initramfs, and VM orchestration."""
 from __future__ import annotations
 
 import argparse
 import gzip
 import os
 from pathlib import Path
+import platform
 import shutil
 import stat
 import subprocess
@@ -19,17 +15,14 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_BUILD = ROOT / ".build"
 
-FIRST_BOOT_KERNEL = {
+COMMON_FIRST_BOOT_KERNEL = {
     "CONFIG_64BIT": "y",
-    "CONFIG_X86_64": "y",
     "CONFIG_BINFMT_ELF": "y",
     "CONFIG_BINFMT_SCRIPT": "y",
     "CONFIG_BLK_DEV_INITRD": "y",
     "CONFIG_RD_GZIP": "y",
     "CONFIG_DEVTMPFS": "y",
     "CONFIG_TTY": "y",
-    "CONFIG_SERIAL_8250": "y",
-    "CONFIG_SERIAL_8250_CONSOLE": "y",
     "CONFIG_PRINTK": "y",
     "CONFIG_PROC_FS": "y",
     "CONFIG_SYSFS": "y",
@@ -37,8 +30,22 @@ FIRST_BOOT_KERNEL = {
     "CONFIG_UNIX": "y",
 }
 
+ARCH_FIRST_BOOT_KERNEL = {
+    "x86_64": {
+        "CONFIG_X86_64": "y",
+        "CONFIG_SERIAL_8250": "y",
+        "CONFIG_SERIAL_8250_CONSOLE": "y",
+    },
+    "arm64": {
+        "CONFIG_ARM64": "y",
+        "CONFIG_SERIAL_AMBA_PL011": "y",
+        "CONFIG_SERIAL_AMBA_PL011_CONSOLE": "y",
+    },
+}
+
 VM_RECOMMENDED_KERNEL = {
     "CONFIG_PCI": {"y"},
+    "CONFIG_VIRTIO": {"y"},
     "CONFIG_VIRTIO_PCI": {"y", "m"},
     "CONFIG_VIRTIO_BLK": {"y", "m"},
     "CONFIG_VIRTIO_NET": {"y", "m"},
@@ -46,14 +53,37 @@ VM_RECOMMENDED_KERNEL = {
 }
 
 
-def run(args: list[str], *, cwd: Path | None = None, check: bool = True) -> subprocess.CompletedProcess[str]:
+def normalize_arch(value: str | None = None) -> str:
+    machine = (value or platform.machine()).lower()
+    if machine in {"x86_64", "amd64", "x86"}:
+        return "x86_64"
+    if machine in {"aarch64", "arm64"}:
+        return "arm64"
+    raise SystemExit(f"unsupported JETOS architecture: {machine}")
+
+
+def run(
+    args: list[str],
+    *,
+    cwd: Path | None = None,
+    check: bool = True,
+) -> subprocess.CompletedProcess[str]:
     print("+", " ".join(args), flush=True)
-    return subprocess.run(args, cwd=cwd, check=check, text=True)
+    return subprocess.run(
+        args,
+        cwd=cwd or ROOT,
+        check=check,
+        text=True,
+    )
 
 
 def parse_ldd(binary: Path) -> list[Path]:
-    """Return absolute shared-library paths required by an imported ELF binary."""
-    result = subprocess.run(["ldd", str(binary)], check=True, text=True, capture_output=True)
+    result = subprocess.run(
+        ["ldd", str(binary)],
+        check=True,
+        text=True,
+        capture_output=True,
+    )
     found: list[Path] = []
     for raw in result.stdout.splitlines():
         line = raw.strip()
@@ -87,49 +117,75 @@ def copy_absolute(source: Path, rootfs: Path) -> Path:
         if not real_target.exists():
             shutil.copy2(real_source, real_target)
     elif source.is_dir():
-        shutil.copytree(source, target, symlinks=True, dirs_exist_ok=True)
+        shutil.copytree(
+            source,
+            target,
+            symlinks=True,
+            dirs_exist_ok=True,
+        )
     else:
         shutil.copy2(source, target, follow_symlinks=True)
     return target
 
 
-def collect_python_runtime(python: Path, stdlib: Path, rootfs: Path) -> None:
+def collect_python_runtime(
+    python: Path,
+    stdlib: Path,
+    rootfs: Path,
+) -> None:
     python = python.resolve()
+    stdlib = stdlib.resolve()
     python_target = copy_absolute(python, rootfs)
     alias = rootfs / "usr/bin/python3"
     alias.parent.mkdir(parents=True, exist_ok=True)
     alias.unlink(missing_ok=True)
-    alias.symlink_to(python_target.name)
+    guest_python = "/" + python_target.relative_to(rootfs).as_posix()
+    alias.symlink_to(guest_python)
 
     stdlib_target = rootfs / stdlib.relative_to("/")
-    shutil.copytree(stdlib, stdlib_target, symlinks=True, dirs_exist_ok=True)
+    shutil.copytree(
+        stdlib,
+        stdlib_target,
+        symlinks=True,
+        dirs_exist_ok=True,
+    )
 
-    # CPython itself must start before it can do any JETOS work. Copy its native
-    # dynamic-loader/libc dependencies. Native extension libraries are copied
-    # from the stdlib tree and their dependencies are added too.
     elf_files = [python]
-    elf_files.extend(p for p in stdlib.rglob("*.so") if p.is_file())
+    elf_files.extend(
+        path
+        for path in stdlib.rglob("*.so")
+        if path.is_file()
+    )
     dependencies: list[Path] = []
     for elf in elf_files:
         try:
-            for dep in parse_ldd(elf):
-                if dep not in dependencies:
-                    dependencies.append(dep)
+            for dependency in parse_ldd(elf):
+                if dependency not in dependencies:
+                    dependencies.append(dependency)
         except subprocess.CalledProcessError:
             continue
-    for dep in dependencies:
-        copy_absolute(dep, rootfs)
+    for dependency in dependencies:
+        copy_absolute(dependency, rootfs)
 
 
 def copy_jetos(rootfs: Path) -> None:
     target = rootfs / "jetos/src/jetos"
     target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(ROOT / "src/jetos", target, dirs_exist_ok=True)
-    shutil.copy2(ROOT / "src/jetos/startup.py", rootfs / "jetos/startup.py")
+    shutil.copytree(
+        ROOT / "src/jetos",
+        target,
+        dirs_exist_ok=True,
+    )
+    shutil.copy2(
+        ROOT / "src/jetos/startup.py",
+        rootfs / "jetos/startup.py",
+    )
 
     init = rootfs / "init"
     init.write_text(
         "#!/usr/bin/python3\n"
+        "import sys\n"
+        "sys.path.insert(0, '/jetos/src')\n"
         "from jetos.init import main\n"
         "main()\n",
         encoding="utf-8",
@@ -137,11 +193,30 @@ def copy_jetos(rootfs: Path) -> None:
     init.chmod(0o755)
 
 
-def make_rootfs(destination: Path, python: Path, stdlib: Path) -> None:
+def make_rootfs(
+    destination: Path,
+    python: Path,
+    stdlib: Path,
+) -> None:
+    if platform.system() != "Linux":
+        raise SystemExit(
+            "JETOS rootfs assembly currently runs on Linux; "
+            "use `python jetos.py dev` on macOS/Windows"
+        )
     if destination.exists():
         shutil.rmtree(destination)
-    for directory in ("dev", "proc", "sys", "tmp", "usr/bin", "jetos"):
-        (destination / directory).mkdir(parents=True, exist_ok=True)
+    for directory in (
+        "dev",
+        "proc",
+        "sys",
+        "tmp",
+        "usr/bin",
+        "jetos",
+    ):
+        (destination / directory).mkdir(
+            parents=True,
+            exist_ok=True,
+        )
     collect_python_runtime(python, stdlib, destination)
     copy_jetos(destination)
 
@@ -165,10 +240,19 @@ def cpio_entry(
 ) -> bytes:
     name_bytes = name.encode("utf-8") + b"\0"
     header = b"070701" + b"".join([
-        cpio_field(ino), cpio_field(mode), cpio_field(0), cpio_field(0),
-        cpio_field(1), cpio_field(0), cpio_field(len(data)), cpio_field(0),
-        cpio_field(0), cpio_field(rdevmajor), cpio_field(rdevminor),
-        cpio_field(len(name_bytes)), cpio_field(0),
+        cpio_field(ino),
+        cpio_field(mode),
+        cpio_field(0),
+        cpio_field(0),
+        cpio_field(1),
+        cpio_field(0),
+        cpio_field(len(data)),
+        cpio_field(0),
+        cpio_field(0),
+        cpio_field(rdevmajor),
+        cpio_field(rdevminor),
+        cpio_field(len(name_bytes)),
+        cpio_field(0),
     ])
     result = header + name_bytes
     result += b"\0" * pad4(len(result))
@@ -177,7 +261,10 @@ def cpio_entry(
     return result
 
 
-def build_initramfs(rootfs: Path, output: Path) -> None:
+def build_initramfs(
+    rootfs: Path,
+    output: Path,
+) -> None:
     pieces: list[bytes] = []
     ino = 1
     pieces.append(
@@ -205,11 +292,28 @@ def build_initramfs(rootfs: Path, output: Path) -> None:
             mode = stat.S_IFREG | (st.st_mode & 0o7777)
         else:
             continue
-        pieces.append(cpio_entry(rel, mode, data, ino=ino))
+        pieces.append(
+            cpio_entry(
+                rel,
+                mode,
+                data,
+                ino=ino,
+            )
+        )
         ino += 1
 
-    pieces.append(cpio_entry("TRAILER!!!", stat.S_IFREG, b"", ino=ino))
-    output.parent.mkdir(parents=True, exist_ok=True)
+    pieces.append(
+        cpio_entry(
+            "TRAILER!!!",
+            stat.S_IFREG,
+            b"",
+            ino=ino,
+        )
+    )
+    output.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
     with output.open("wb") as raw:
         with gzip.GzipFile(
             fileobj=raw,
@@ -219,55 +323,112 @@ def build_initramfs(rootfs: Path, output: Path) -> None:
         ) as stream:
             for piece in pieces:
                 stream.write(piece)
-    print(f"wrote {output} ({output.stat().st_size} bytes)")
+    print(
+        f"wrote {output} "
+        f"({output.stat().st_size} bytes)"
+    )
 
 
-def read_kernel_config(path: Path) -> dict[str, str]:
+def kernel_requirements(
+    target_arch: str,
+) -> dict[str, str]:
+    target_arch = normalize_arch(target_arch)
+    return {
+        **COMMON_FIRST_BOOT_KERNEL,
+        **ARCH_FIRST_BOOT_KERNEL[target_arch],
+    }
+
+
+def read_kernel_config(
+    path: Path,
+) -> dict[str, str]:
     values: dict[str, str] = {}
-    for raw in path.read_text(encoding="utf-8").splitlines():
-        if raw.startswith("CONFIG_") and "=" in raw:
+    for raw in path.read_text(
+        encoding="utf-8"
+    ).splitlines():
+        if (
+            raw.startswith("CONFIG_")
+            and "=" in raw
+        ):
             key, value = raw.split("=", 1)
             values[key] = value
-        elif raw.startswith("# CONFIG_") and raw.endswith(" is not set"):
+        elif (
+            raw.startswith("# CONFIG_")
+            and raw.endswith(" is not set")
+        ):
             values[raw[2:-11]] = "n"
     return values
 
 
-def check_kernel_config(path: Path) -> None:
+def check_kernel_config(
+    path: Path,
+    target_arch: str,
+) -> None:
     values = read_kernel_config(path)
+    wanted = kernel_requirements(target_arch)
     failures = [
-        f"{key}={values.get(key, 'missing')} (need {need})"
-        for key, need in FIRST_BOOT_KERNEL.items()
+        (
+            f"{key}="
+            f"{values.get(key, 'missing')} "
+            f"(need {need})"
+        )
+        for key, need in wanted.items()
         if values.get(key) != need
     ]
     if failures:
         raise SystemExit(
-            "JETOS first-boot kernel profile failed:\n  "
+            "JETOS first-boot kernel "
+            "profile failed:\n  "
             + "\n  ".join(failures)
         )
-    print("JETOS first-boot kernel profile: PASS")
+    print(
+        "JETOS first-boot kernel profile "
+        f"({normalize_arch(target_arch)}): PASS"
+    )
     for key, accepted in VM_RECOMMENDED_KERNEL.items():
-        value = values.get(key, "missing")
-        status = "ready" if value in accepted else "not enabled yet"
-        print(f"  {key}={value}: {status}")
+        value = values.get(
+            key,
+            "missing",
+        )
+        status = (
+            "ready"
+            if value in accepted
+            else "not enabled yet"
+        )
+        print(
+            f"  {key}={value}: {status}"
+        )
 
 
-def patch_kernel_config(path: Path) -> None:
-    lines = path.read_text(encoding="utf-8").splitlines()
-    wanted = FIRST_BOOT_KERNEL
+def patch_kernel_config(
+    path: Path,
+    target_arch: str,
+) -> None:
+    lines = path.read_text(
+        encoding="utf-8"
+    ).splitlines()
+    wanted = kernel_requirements(target_arch)
     seen: set[str] = set()
     output: list[str] = []
 
     for line in lines:
         key: str | None = None
-        if line.startswith("CONFIG_") and "=" in line:
+        if (
+            line.startswith("CONFIG_")
+            and "=" in line
+        ):
             key = line.split("=", 1)[0]
-        elif line.startswith("# CONFIG_") and line.endswith(" is not set"):
+        elif (
+            line.startswith("# CONFIG_")
+            and line.endswith(" is not set")
+        ):
             key = line[2:-11]
 
         if key in wanted:
             if key not in seen:
-                output.append(f"{key}={wanted[key]}")
+                output.append(
+                    f"{key}={wanted[key]}"
+                )
                 seen.add(key)
         else:
             output.append(line)
@@ -276,46 +437,156 @@ def patch_kernel_config(path: Path) -> None:
         if key not in seen:
             output.append(f"{key}={value}")
 
-    path.write_text("\n".join(output) + "\n", encoding="utf-8")
+    path.write_text(
+        "\n".join(output) + "\n",
+        encoding="utf-8",
+    )
 
 
-def kernel_build(source: Path, *, arch: str, jobs: int, config: str) -> None:
+def kernel_image(
+    source: Path,
+    target_arch: str,
+) -> Path:
+    if normalize_arch(target_arch) == "x86_64":
+        return source / "arch/x86/boot/bzImage"
+    return source / "arch/arm64/boot/Image"
+
+
+def kernel_build(
+    source: Path,
+    *,
+    target_arch: str,
+    jobs: int,
+    config: str,
+) -> Path:
     source = source.resolve()
+    target_arch = normalize_arch(target_arch)
+
     if not (source / "Makefile").exists():
-        raise SystemExit(f"not a Linux source tree: {source}")
-    if arch != "x86_64":
-        raise SystemExit("first JETOS kernel profile currently targets x86_64")
+        raise SystemExit(
+            f"not a Linux source tree: {source}"
+        )
 
-    run(["make", f"ARCH={arch}", config], cwd=source)
+    run(
+        [
+            "make",
+            f"ARCH={target_arch}",
+            config,
+        ],
+        cwd=source,
+    )
     config_path = source / ".config"
-    patch_kernel_config(config_path)
-    run(["make", f"ARCH={arch}", "olddefconfig"], cwd=source)
-    check_kernel_config(config_path)
-    run(["make", f"ARCH={arch}", f"-j{jobs}", "bzImage"], cwd=source)
+    patch_kernel_config(
+        config_path,
+        target_arch,
+    )
+    run(
+        [
+            "make",
+            f"ARCH={target_arch}",
+            "olddefconfig",
+        ],
+        cwd=source,
+    )
+    check_kernel_config(
+        config_path,
+        target_arch,
+    )
+    target = (
+        "bzImage"
+        if target_arch == "x86_64"
+        else "Image"
+    )
+    run(
+        [
+            "make",
+            f"ARCH={target_arch}",
+            f"-j{jobs}",
+            target,
+        ],
+        cwd=source,
+    )
 
-    image = source / "arch/x86/boot/bzImage"
-    print(f"JETOS kernel image: {image} ({image.stat().st_size} bytes)")
+    image = kernel_image(
+        source,
+        target_arch,
+    )
+    print(
+        f"JETOS kernel image: "
+        f"{image} "
+        f"({image.stat().st_size} bytes)"
+    )
+    return image
 
 
-def qemu_boot(kernel: Path, initramfs: Path, memory: str) -> None:
-    qemu = shutil.which("qemu-system-x86_64")
+def qemu_boot(
+    kernel: Path,
+    initramfs: Path,
+    memory: str,
+    target_arch: str,
+) -> None:
+    target_arch = normalize_arch(target_arch)
+    if target_arch == "x86_64":
+        executable = "qemu-system-x86_64"
+        console = "ttyS0"
+        machine_args: list[str] = []
+    else:
+        executable = "qemu-system-aarch64"
+        console = "ttyAMA0"
+        machine_args = [
+            "-machine",
+            "virt",
+            "-cpu",
+            "max",
+        ]
+
+    qemu = shutil.which(executable)
     if not qemu:
-        raise SystemExit("qemu-system-x86_64 is not installed")
-    os.execvp(qemu, [
+        raise SystemExit(
+            f"{executable} is not installed"
+        )
+
+    accel = (
+        "kvm"
+        if Path("/dev/kvm").exists()
+        else "tcg"
+    )
+
+    os.execvp(
         qemu,
-        "-m", memory,
-        "-kernel", str(kernel),
-        "-initrd", str(initramfs),
-        "-append", "console=ttyS0 rdinit=/init panic=-1",
-        "-nographic",
-        "-no-reboot",
-    ])
+        [
+            qemu,
+            "-accel",
+            accel,
+            *machine_args,
+            "-m",
+            memory,
+            "-kernel",
+            str(kernel),
+            "-initrd",
+            str(initramfs),
+            "-append",
+            (
+                f"console={console} "
+                "rdinit=/init "
+                "panic=-1"
+            ),
+            "-nic",
+            "none",
+            "-nographic",
+            "-no-reboot",
+        ],
+    )
 
 
-def chroot_dry_run(rootfs: Path) -> None:
-    """Run the assembled CPython rootfs without a VM."""
+def chroot_dry_run(
+    rootfs: Path,
+) -> None:
     if os.geteuid() != 0:
-        raise SystemExit("dry-run currently requires root for os.chroot()")
+        raise SystemExit(
+            "dry-run currently requires "
+            "root for os.chroot()"
+        )
     run([
         sys.executable,
         str(Path(__file__).resolve()),
@@ -324,112 +595,233 @@ def chroot_dry_run(rootfs: Path) -> None:
     ])
 
 
-def enter_rootfs(rootfs: Path) -> None:
+def enter_rootfs(
+    rootfs: Path,
+) -> None:
     os.chroot(rootfs)
     os.chdir("/")
     os.environ["PYTHONPATH"] = "/jetos/src"
-    os.environ["PYTHONSTARTUP"] = "/jetos/startup.py"
-    os.execv("/usr/bin/python3", ["/usr/bin/python3", "-S", "-i"])
+    os.environ["PYTHONSTARTUP"] = (
+        "/jetos/startup.py"
+    )
+    os.execv(
+        "/usr/bin/python3",
+        [
+            "/usr/bin/python3",
+            "-S",
+            "-i",
+        ],
+    )
 
 
 def defaults() -> tuple[Path, Path]:
-    executable = Path(sys.executable).resolve()
-    version = f"python{sys.version_info.major}.{sys.version_info.minor}"
+    executable = Path(
+        sys.executable
+    ).resolve()
+    version = (
+        f"python"
+        f"{sys.version_info.major}."
+        f"{sys.version_info.minor}"
+    )
     candidates = [
         Path("/usr/lib") / version,
         Path(sys.prefix) / "lib" / version,
     ]
-    stdlib = next((path for path in candidates if path.is_dir()), None)
+    stdlib = next(
+        (
+            path
+            for path in candidates
+            if path.is_dir()
+        ),
+        None,
+    )
     if stdlib is None:
-        raise SystemExit("could not locate Python standard library")
+        raise SystemExit(
+            "could not locate "
+            "Python standard library"
+        )
     return executable, stdlib
 
 
 def main() -> int:
     python, stdlib = defaults()
-    parser = argparse.ArgumentParser(description="JETOS Python-owned build tool")
-    sub = parser.add_subparsers(dest="command", required=True)
-
-    root = sub.add_parser(
-        "rootfs",
-        help="assemble the JETOS CPython root filesystem",
+    parser = argparse.ArgumentParser(
+        description=(
+            "JETOS Python-owned build tool"
+        )
     )
-    root.add_argument("--output", type=Path, default=DEFAULT_BUILD / "rootfs")
-    root.add_argument("--python", type=Path, default=python)
-    root.add_argument("--stdlib", type=Path, default=stdlib)
-
-    initrd = sub.add_parser(
-        "initramfs",
-        help="assemble rootfs and encode a bootable initramfs",
+    sub = parser.add_subparsers(
+        dest="command",
+        required=True,
     )
-    initrd.add_argument("--rootfs", type=Path, default=DEFAULT_BUILD / "rootfs")
+
+    root = sub.add_parser("rootfs")
+    root.add_argument(
+        "--output",
+        type=Path,
+        default=DEFAULT_BUILD / "rootfs",
+    )
+    root.add_argument(
+        "--python",
+        type=Path,
+        default=python,
+    )
+    root.add_argument(
+        "--stdlib",
+        type=Path,
+        default=stdlib,
+    )
+
+    initrd = sub.add_parser("initramfs")
+    initrd.add_argument(
+        "--rootfs",
+        type=Path,
+        default=DEFAULT_BUILD / "rootfs",
+    )
     initrd.add_argument(
         "--output",
         type=Path,
-        default=DEFAULT_BUILD / "jetos-initramfs.cpio.gz",
+        default=(
+            DEFAULT_BUILD
+            / "jetos-initramfs.cpio.gz"
+        ),
     )
-    initrd.add_argument("--python", type=Path, default=python)
-    initrd.add_argument("--stdlib", type=Path, default=stdlib)
-
-    dry = sub.add_parser(
-        "dry-run",
-        help="open CPython from the assembled rootfs without a hypervisor",
+    initrd.add_argument(
+        "--python",
+        type=Path,
+        default=python,
     )
-    dry.add_argument("--rootfs", type=Path, default=DEFAULT_BUILD / "rootfs")
-    dry.add_argument("--python", type=Path, default=python)
-    dry.add_argument("--stdlib", type=Path, default=stdlib)
-
-    check = sub.add_parser(
-        "kernel-check",
-        help="validate an existing Linux .config for JETOS first boot",
+    initrd.add_argument(
+        "--stdlib",
+        type=Path,
+        default=stdlib,
     )
-    check.add_argument("config", type=Path)
 
-    kernel = sub.add_parser(
-        "kernel",
-        help="configure/build an imported Linux source tree",
+    dry = sub.add_parser("dry-run")
+    dry.add_argument(
+        "--rootfs",
+        type=Path,
+        default=DEFAULT_BUILD / "rootfs",
     )
-    kernel.add_argument("source", type=Path)
-    kernel.add_argument("--arch", default="x86_64")
-    kernel.add_argument("--jobs", type=int, default=os.cpu_count() or 1)
-    kernel.add_argument("--config", default="defconfig")
+    dry.add_argument(
+        "--python",
+        type=Path,
+        default=python,
+    )
+    dry.add_argument(
+        "--stdlib",
+        type=Path,
+        default=stdlib,
+    )
 
-    enter = sub.add_parser("_enter-rootfs", help=argparse.SUPPRESS)
-    enter.add_argument("rootfs", type=Path)
+    check = sub.add_parser("kernel-check")
+    check.add_argument(
+        "config",
+        type=Path,
+    )
+    check.add_argument(
+        "--arch",
+        default=normalize_arch(),
+    )
 
-    vm = sub.add_parser("vm", help="boot JETOS under QEMU")
-    vm.add_argument("--kernel", type=Path, required=True)
+    kernel = sub.add_parser("kernel")
+    kernel.add_argument(
+        "source",
+        type=Path,
+    )
+    kernel.add_argument(
+        "--arch",
+        default=normalize_arch(),
+    )
+    kernel.add_argument(
+        "--jobs",
+        type=int,
+        default=os.cpu_count() or 1,
+    )
+    kernel.add_argument(
+        "--config",
+        default="defconfig",
+    )
+
+    enter = sub.add_parser(
+        "_enter-rootfs",
+        help=argparse.SUPPRESS,
+    )
+    enter.add_argument(
+        "rootfs",
+        type=Path,
+    )
+
+    vm = sub.add_parser("vm")
+    vm.add_argument(
+        "--arch",
+        default=normalize_arch(),
+    )
+    vm.add_argument(
+        "--kernel",
+        type=Path,
+        required=True,
+    )
     vm.add_argument(
         "--initramfs",
         type=Path,
-        default=DEFAULT_BUILD / "jetos-initramfs.cpio.gz",
+        default=(
+            DEFAULT_BUILD
+            / "jetos-initramfs.cpio.gz"
+        ),
     )
-    vm.add_argument("--memory", default="512M")
+    vm.add_argument(
+        "--memory",
+        default="512M",
+    )
 
     args = parser.parse_args()
 
     if args.command == "rootfs":
-        make_rootfs(args.output, args.python, args.stdlib)
+        make_rootfs(
+            args.output,
+            args.python,
+            args.stdlib,
+        )
         print(f"rootfs: {args.output}")
     elif args.command == "initramfs":
-        make_rootfs(args.rootfs, args.python, args.stdlib)
-        build_initramfs(args.rootfs, args.output)
+        make_rootfs(
+            args.rootfs,
+            args.python,
+            args.stdlib,
+        )
+        build_initramfs(
+            args.rootfs,
+            args.output,
+        )
     elif args.command == "dry-run":
-        make_rootfs(args.rootfs, args.python, args.stdlib)
+        make_rootfs(
+            args.rootfs,
+            args.python,
+            args.stdlib,
+        )
         chroot_dry_run(args.rootfs)
     elif args.command == "kernel-check":
-        check_kernel_config(args.config)
+        check_kernel_config(
+            args.config,
+            args.arch,
+        )
     elif args.command == "kernel":
         kernel_build(
             args.source,
-            arch=args.arch,
+            target_arch=args.arch,
             jobs=args.jobs,
             config=args.config,
         )
     elif args.command == "_enter-rootfs":
         enter_rootfs(args.rootfs)
     elif args.command == "vm":
-        qemu_boot(args.kernel, args.initramfs, args.memory)
+        qemu_boot(
+            args.kernel,
+            args.initramfs,
+            args.memory,
+            args.arch,
+        )
 
     return 0
 
