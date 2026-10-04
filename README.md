@@ -18,3 +18,53 @@ Text direction:
 - Raw byte data remains explicitly representable at compatibility boundaries.
 
 See `PHILOSOPHY.md`, `REQUIREMENTS.md`, and `docs/architecture/`.
+
+
+## Docker test image
+
+JETOS currently has a Docker-based userspace/test image. Docker supplies the Linux kernel; this is **not yet a standalone bootable JETOS kernel image**.
+
+Build it:
+
+```bash
+git clone https://github.com/Johnetordoff/JETOS.git
+cd JETOS
+docker build -t jetos:dev .
+```
+
+The build runs both:
+
+```bash
+python tools/test.py
+python tools/test_unicode.py
+```
+
+A successful build therefore verifies the current C port and the Dona Code / Unicode smoke tests.
+
+Open an interactive JETOS test shell:
+
+```bash
+docker run --rm -it jetos:dev
+```
+
+Inside the container, rerun tests with:
+
+```bash
+python tools/test.py
+python tools/test_unicode.py
+```
+
+You can also test Unicode directly:
+
+```bash
+python - <<'PY'
+text = "JETOS: café Ελληνικά العربية 漢字 🧪🚀"
+raw = text.encode("utf-8")
+print(text)
+print(raw)
+print(raw.decode("utf-8"))
+assert raw.decode("utf-8") == text
+PY
+```
+
+The image sets `LANG=C.UTF-8` and `LC_ALL=C.UTF-8`.
