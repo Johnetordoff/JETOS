@@ -13,5 +13,6 @@ ENV LC_ALL=C.UTF-8
 
 RUN python tools/test.py
 RUN python tools/test_unicode.py
+RUN python tools/test_language.py
 
 CMD ["/bin/bash"]

@@ -36,6 +36,7 @@ The distinction between **implemented now** and **planned architecture** matters
 |---|---|---|
 | Git source repository | Implemented | Private GitHub repository with ordinary Git history |
 | Python-first control code | Implemented, small | `src/jetos/` contains the first JETOS Python modules |
+| Editable language fork tooling | Implemented | Python can create, patch, build, install, and smoke-test a pinned CPython-derived JETOS language source tree |
 | Hardware snapshot | Implemented, minimal | Reports architecture, CPU count, sysfs, Device Tree, and ACPI presence |
 | Native C boundary | Implemented, experimental | First readable C replacement experiment based on a GCC C++ utility |
 | Strict C tests | Implemented | C11, warnings-as-errors, pedantic build |
@@ -557,6 +558,7 @@ The Docker build runs:
 ```bash
 python tools/test.py
 python tools/test_unicode.py
+python tools/test_language.py
 ```
 
 The image sets:
@@ -784,7 +786,9 @@ src/jetos/
     startup.py
 tools/
     build.py
+    language.py
     test.py
+    test_language.py
     test_unicode.py
 ports/gcc/ordered_hash_map_c/
     ordered_hash_map.c
@@ -900,3 +904,88 @@ Next:
 
 > Docker proves JETOS userspace.  
 > A hypervisor proves JETOS boot ownership.
+
+
+---
+
+## 26. Editable JETOS language fork
+
+CPython is no longer treated as an untouchable runtime dependency.
+
+JETOS treats the interpreter, parser, compiler pipeline, bytecode machinery, object model, garbage collector, standard library, and runtime as source that the project may fork and change. Compatibility with Python is useful during bootstrap, but it is not a permanent constitutional requirement. If JETOS evolves far enough, this becomes a distinct programming language descended from CPython rather than "Python with some OS scripts."
+
+The currently pinned upstream ancestor is:
+
+```text
+repository: https://github.com/python/cpython.git
+commit: 9d22a5334bd5273962adceeb697a1337e9a0ca21
+upstream branch at selection time: main
+upstream language version at that commit: 3.16.0a0
+```
+
+JETOS owns `tools/language.py`, which can create a local editable Git fork from that exact ancestor:
+
+```bash
+python tools/language.py fork ../jetos-language
+```
+
+That command:
+
+1. clones upstream CPython;
+2. checks out the exact pinned ancestor;
+3. creates a `jetos-language` Git branch;
+4. adds `Include/jetos.h`;
+5. changes the interpreter implementation identity from `cpython` to `jetos`;
+6. gives the runtime a JETOS-specific bytecode cache tag through `sys.implementation`;
+7. adds `sys.jetos_language_version`;
+8. commits the initial fork mutation locally.
+
+The fork is then normal source code. Nothing about the parser, compiler, VM, Unicode implementation, object representation, garbage collector, import system, or standard library is considered sacred.
+
+Build it using Python-owned orchestration:
+
+```bash
+python tools/language.py build ../jetos-language \
+    --build .build/jetos-language \
+    --prefix .build/jetos-language-install
+
+python tools/language.py smoke --build .build/jetos-language
+python tools/language.py install --build .build/jetos-language
+```
+
+The smoke test requires the **interpreter itself** to report:
+
+```text
+sys.implementation.name == "jetos"
+sys.jetos_language_version == "0.1"
+```
+
+Because the implementation name changes, its normal bytecode cache tag becomes JETOS-specific rather than pretending to be ordinary CPython.
+
+The installed fork can then be supplied to the JETOS root-filesystem builder:
+
+```bash
+python tools/build.py rootfs \
+    --python .build/jetos-language-install/bin/python3.16 \
+    --stdlib .build/jetos-language-install/lib/python3.16
+```
+
+### Bootstrap build machinery
+
+The upstream CPython `configure` script and Makefile are temporarily imported bootstrap machinery. JETOS does not claim those files are Python. JETOS's decisions and orchestration are Python-owned; replacing upstream shell/make build machinery is a later migration task.
+
+The same rule applies to the native compiler toolchain. GCC/other compiler source is not a sealed external appliance. It is an editable source dependency. JETOS's long-term direction remains to remove required C++ from its trusted toolchain and make the native compiler path source-visible, reproducible, and editable.
+
+### Online fork status
+
+The connected GitHub interface available during this bootstrap can write to existing repositories but does not expose GitHub's repository-fork/create operation. Therefore this PR creates the **reproducible editable source-fork mechanism** and pins the exact ancestor, but it does not falsely claim that a separate `Johnetordoff/cpython` GitHub repository has already been created.
+
+Once such a repository exists, the local `jetos-language` branch is ordinary Git and can be pushed to it without changing the JETOS architecture.
+
+### Canonical rule
+
+> The language implementation is part of the operating system.
+
+> If the language needs to change for JETOS, change the language.
+
+> No compiler, interpreter, parser, runtime, standard library, or build tool is considered uneditable merely because it came from upstream.
