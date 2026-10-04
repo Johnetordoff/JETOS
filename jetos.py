@@ -22,7 +22,7 @@ def python_tool(name: str, args: list[str]) -> None:
 
 
 def tests() -> None:
-    for script in ("test.py", "test_unicode.py", "test_language.py", "test_bootstrap.py"):
+    for script in ("test.py", "test_unicode.py", "test_language.py", "test_bootstrap.py", "test_desktop.py"):
         python_tool(script, [])
 
 
@@ -104,6 +104,17 @@ def main() -> int:
         help="run build/QEMU directly on a Linux development host instead of Docker",
     )
 
+    gui = sub.add_parser(
+        "gui",
+        help="run the JETOS Tkinter desktop preview on the current display",
+    )
+    gui.add_argument(
+        "--geometry",
+        help="preview at an arbitrary WIDTHxHEIGHT, for example 517x301",
+    )
+    gui.add_argument("--fullscreen", action="store_true")
+    gui.add_argument("--no-splash", action="store_true")
+
     sub.add_parser("text", help="print every tracked UTF-8 text file in JETOS")
 
     args = parser.parse_args()
@@ -123,6 +134,28 @@ def main() -> int:
             python_tool("dev.py", ["build" if args.build_only else "run"])
         else:
             docker_dev(args.build_only)
+    elif args.command == "gui":
+        command = [
+            sys.executable,
+            "-m",
+            "jetos.desktop",
+        ]
+        if args.geometry:
+            command.extend(["--geometry", args.geometry])
+        if args.fullscreen:
+            command.append("--fullscreen")
+        if args.no_splash:
+            command.append("--no-splash")
+        environment = os.environ.copy()
+        source_path = str(ROOT / "src")
+        existing = environment.get("PYTHONPATH")
+        environment["PYTHONPATH"] = (
+            source_path if not existing else source_path + os.pathsep + existing
+        )
+        print("+", " ".join(command), flush=True)
+        raise SystemExit(
+            subprocess.call(command, cwd=ROOT, env=environment)
+        )
     elif args.command == "text":
         print_all_text()
     return 0
