@@ -2,7 +2,7 @@
 
 JETOS is a source-oriented, Python-first operating-system project whose long-term goal is to replace the software stack on a target machine rather than merely run as an application inside another operating system.
 
-**Project state:** early bootstrap / architecture / executable experiments.
+**Project state:** early bootstrap with a Python-built root filesystem/initramfs and a working CPython-shell dry run.
 
 The current repository is intentionally small. It proves pieces of the design in Docker and in native C/Python tests. It is **not yet a standalone bootable distribution**. The next major milestone is a hypervisor-bootable JETOS image with its own selected Linux kernel, root filesystem, PID 1/bootstrap path, CPython runtime, and console.
 
@@ -36,17 +36,22 @@ The distinction between **implemented now** and **planned architecture** matters
 |---|---|---|
 | Git source repository | Implemented | Private GitHub repository with ordinary Git history |
 | Python-first control code | Implemented, small | `src/jetos/` contains the first JETOS Python modules |
+| Editable language fork tooling | Implemented | Python can create, patch, build, install, and smoke-test a pinned CPython-derived JETOS language source tree |
 | Hardware snapshot | Implemented, minimal | Reports architecture, CPU count, sysfs, Device Tree, and ACPI presence |
 | Native C boundary | Implemented, experimental | First readable C replacement experiment based on a GCC C++ utility |
 | Strict C tests | Implemented | C11, warnings-as-errors, pedantic build |
 | Sanitizer tests | Implemented | AddressSanitizer + UndefinedBehaviorSanitizer run for the C experiment |
-| Dunicode | Implemented, v0.1 | JETOS-native 1:1 character layer over Unicode scalar values |
+| Dunicode | Implemented, v0.2 | Unicode-compatible scalar layer plus reversible character retirement/removal policy |
 | Unicode / UTF-8 | Implemented, smoke-tested | Strict UTF-8 round trips, multilingual text, emoji, combining characters, invalid UTF-8 rejection, filesystem cases |
 | Docker test image | Implemented | Reproducible userspace/test container |
-| Hypervisor boot | Planned | Architecture defined; no bootable VM image yet |
-| JETOS-controlled kernel | Planned | Linux is the initial kernel, but no JETOS kernel build/image is committed yet |
-| JETOS PID 1 | Planned | Not implemented yet |
-| JETOS interactive console | Planned | Not implemented yet |
+| Python rootfs builder | Implemented | CPython assembles the root filesystem and native runtime dependencies |
+| Python initramfs writer | Implemented | CPython writes the newc CPIO archive and deterministic gzip stream |
+| First CPython-shell dry run | Passed | Assembled rootfs enters a `jetos>` CPython interpreter |
+| Hypervisor boot | Tooling implemented, execution pending | Python QEMU launcher exists; this environment has no QEMU binary |
+| JETOS kernel profile | Implemented for first x86-64 boot | Python validates and patches boot-critical Linux Kconfig values |
+| JETOS kernel build orchestration | Implemented | Python drives imported Linux Kbuild and produces `bzImage` |
+| JETOS PID 1 | Implemented, VM proof pending | `/init` is Python and execs CPython so the interpreter remains PID 1 |
+| JETOS interactive console | Implemented in dry run | The first shell is CPython itself, with `jetos>` prompt and Dunicode preloaded |
 | Full hardware discovery | Planned | Only a small Python snapshot exists today |
 | Master networking OFF switch | Planned | Defined behavior, not implemented |
 | File/provenance manifest | Planned | Required architecture, not implemented |
@@ -79,10 +84,18 @@ JETOS has a deliberately restrictive language policy:
 
 ### JETOS-owned executable logic
 
-1. **Python first.**
-2. **C** when Python cannot correctly or reasonably implement a native boundary.
+The stronger rule is:
+
+> **If it can be done correctly in CPython, JETOS does it in CPython.**
+
+That includes the OS shell, root-filesystem assembly, initramfs construction, early userspace/bootstrap, kernel configuration and build orchestration, services, package orchestration, tests, developer tooling, image construction, and administration.
+
+1. **CPython first, every time it is technically available.**
+2. **C** only where CPython cannot execute or cannot correctly provide the required native boundary.
 3. **Assembly** only where the architecture itself requires it.
 4. Every non-Python JETOS-owned executable source file must be explainable and reviewable.
+
+CPython is not merely a favored application language in JETOS. It is intended to be the operating system's normal control language and interactive shell. JETOS may eventually carry its own CPython fork, but the architectural rule is already the same: Python is the default implementation environment, not an add-on.
 
 C++ is not an accepted long-term JETOS implementation language. Existing C++ required by imported toolchains or upstream packages is migration debt.
 
@@ -104,6 +117,7 @@ Declarative data is allowed when it is genuinely data. Configuration that grows 
 
 The long-term native-language goal is:
 
+> If CPython can do it correctly, CPython does it.  
 > Python for JETOS logic.  
 > C for native implementation.  
 > Assembly only where architecture demands it.  
@@ -186,20 +200,27 @@ JETOS uses:
 
 JETOS must not silently destroy data at an encoding boundary.
 
-### 5.2 Dunicode v0.1
+### 5.2 Dunicode v0.2
 
 Dunicode is the JETOS-native character layer.
 
-For version 0.1, Dunicode is deliberately boring:
+Dunicode keeps Unicode interoperability while allowing the active encoding convention to become smaller or stricter over time.
+
+Version 0.2 rules:
 
 - every Dunicode character maps **1:1** to a valid Unicode scalar value;
-- Dunicode therefore covers the same scalar range as Unicode;
 - a Dunicode scalar may be displayed as `D+XXXX` or `D+XXXXX`;
 - Dunicode text serializes to ordinary strict UTF-8;
 - converting Unicode → Dunicode → Unicode is lossless;
+- a current Dunicode encoder may **retire/remove a scalar from new canonical encoding**;
+- historical bytes containing a retired scalar still decode to the same original scalar;
+- retirement never silently reassigns the scalar to a different meaning or presentation;
+- character identity and rendering/presentation policy are separate;
 - Dunicode does not silently normalize text;
 - surrogate code points are invalid;
 - malformed UTF-8 is rejected rather than silently repaired.
+
+That removal rule is important: Dunicode can stop emitting a character in a newer convention without corrupting old data and without pretending the old character has become a different character.
 
 Examples:
 
@@ -212,7 +233,7 @@ Unicode U+1F9EA <->  Dunicode D+1F9EA  🧪
 
 This gives JETOS its own explicit text abstraction without sacrificing compatibility with the existing Unicode world.
 
-Future Dunicode versions may add JETOS-specific semantics, but version 0.1 must remain fully reversible and Unicode-compatible.
+Future Dunicode versions may add more registry/policy behavior, but historical decoding must remain reversible. Dunicode v0.2 does **not** claim that its UTF-8 bytes are magically shorter than UTF-8; the intended compactness is that JETOS can maintain a smaller active repertoire/implementation without carrying every Unicode policy decision as immutable active convention.
 
 ### 5.3 Filesystem bytes
 
@@ -310,6 +331,8 @@ JETOS initially accepts native/imported boundaries for:
 12. machine-code compilation.
 
 The goal is not to pretend those boundaries are Python. The goal is to make each boundary visible, minimized, and accountable.
+
+There is one unavoidable bootstrapping fact: ordinary CPython cannot run *inside* the Linux kernel before the kernel exists, because CPython itself depends on kernel facilities such as virtual memory, processes, files, and system calls. Therefore the initial Linux kernel remains imported native C/assembly substrate. JETOS still owns its **kernel selection, required feature profile, configuration patching, build orchestration, image selection, and boot orchestration in Python**. Any kernel-adjacent job that can move out of native kernel space into CPython should do so.
 
 ---
 
@@ -535,6 +558,7 @@ The Docker build runs:
 ```bash
 python tools/test.py
 python tools/test_unicode.py
+python tools/test_language.py
 ```
 
 The image sets:
@@ -548,7 +572,24 @@ Docker supplies the host Linux kernel. Therefore a successful Docker run proves 
 
 ---
 
-## 17. Hypervisor / VM milestone
+## 17. Python-first boot path and hypervisor milestone
+
+JETOS now has Python-owned targets for:
+
+```text
+python tools/build.py rootfs
+python tools/build.py initramfs
+python tools/build.py kernel-check <linux .config>
+python tools/build.py kernel <linux-source-tree>
+python tools/build.py dry-run
+python tools/build.py vm --kernel <bzImage>
+```
+
+The rootfs target copies the selected CPython runtime, standard library, native loader/library dependencies, and JETOS Python source. The initramfs target writes the kernel's newc CPIO format directly in Python and gzip-compresses it deterministically. No JETOS-owned shell script, Makefile, BusyBox init, or systemd is part of this first boot path.
+
+The kernel target is also Python-owned orchestration. Linux's Kbuild/`make` remains an imported native build dependency for the imported Linux kernel itself; JETOS's policy/configuration logic is Python.
+
+The next integration boundary is the hypervisor boot.
 
 The next major integration target is:
 
@@ -596,7 +637,7 @@ John E Tordoff's Operating System
 architecture: aarch64
 kernel: Linux ...
 python: 3.x
-Dunicode: 0.1
+Dunicode: 0.2
 Unicode: supported
 encoding: UTF-8
 network: OFF
@@ -706,7 +747,32 @@ Virtual machines are essential, but selected cheap replaceable physical test har
 
 ---
 
-## 21. Current repository layout
+## 21. First dry run
+
+The first root-filesystem dry run has been executed successfully. It used the same assembled CPython runtime that the initramfs contains, entered it with `chroot`, and opened CPython as the JETOS shell:
+
+```text
+CPython is JETOS's first shell. `dunicode` is preloaded.
+FIRST JETOS DRY RUN
+D+1F9EA
+42
+Python 3.13.5 ... on linux
+jetos>
+```
+
+Measured artifact sizes from that run:
+
+- assembled root filesystem: **81,948,873 bytes**;
+- regular files in assembled root filesystem: **1,344**;
+- gzip initramfs: **28,231,806 bytes**.
+
+An installed Debian Linux 6.12 x86-64 kernel configuration also passed the JETOS first-boot profile, including ELF/script execution, initramfs+gzip, devtmpfs, serial console, procfs, sysfs, tmpfs, and Unix sockets. Virtio PCI/block/network and ext4 were present as built-in or modules.
+
+This proves the Python-built filesystem and CPython-first shell path. It does **not yet prove a full kernel/QEMU boot**; the execution environment used for this work does not contain QEMU and cannot download it. The `vm` target is ready for a host that has `qemu-system-x86_64`.
+
+---
+
+## 22. Current repository layout
 
 The intentionally small source tree contains:
 
@@ -716,8 +782,13 @@ src/jetos/
     __init__.py
     hardware.py
     dunicode.py
+    init.py
+    startup.py
 tools/
+    build.py
+    language.py
     test.py
+    test_language.py
     test_unicode.py
 ports/gcc/ordered_hash_map_c/
     ordered_hash_map.c
@@ -732,13 +803,19 @@ There is deliberately only **one Markdown architecture/documentation file: this 
 
 ---
 
-## 22. Current test commands
+## 23. Current test commands
 
-Repository tests:
+Repository tests and first-boot targets:
 
 ```bash
 python tools/test.py
 python tools/test_unicode.py
+python tools/build.py rootfs
+python tools/build.py initramfs
+python tools/build.py kernel-check /path/to/linux/.config
+python tools/build.py kernel /path/to/linux-source
+python tools/build.py dry-run
+python tools/build.py vm --kernel /path/to/bzImage
 ```
 
 The C test driver compiles with strict C11 warnings-as-errors and repeats under sanitizers.
@@ -764,30 +841,38 @@ The Dunicode/Unicode test driver covers:
 - Dunicode scalar conversion;
 - Dunicode `D+...` labels;
 - rejection of surrogate and out-of-range Dunicode scalars;
-- preservation rather than silent normalization.
+- preservation rather than silent normalization;
+- Dunicode removal/retirement from new encoding while historical decoding remains stable.
 
 ---
 
-## 23. Near-term build order
+## 24. Near-term build order
 
-1. Keep Docker tests green.
-2. Keep the source tree small and language-classified.
-3. Expand Dunicode only through reversible tested behavior.
-4. Inventory the minimal Linux kernel features required by CPython + JETOS.
-5. Create one VM kernel configuration.
-6. Build the smallest root filesystem capable of starting CPython.
-7. Implement JETOS early bootstrap / PID 1 in Python with the necessary native handoff.
-8. Produce a bootable initramfs/disk artifact.
-9. Boot under a hardware-assisted hypervisor.
-10. Reach a JETOS console.
-11. Run the JETOS tests inside the VM.
-12. Implement and verify networking OFF.
-13. Repeat for the second architecture.
-14. Begin replacing larger imported C++/Bash dependencies only after the boot/test path is reproducible.
+Completed in this PR stack:
+
+1. define the first x86-64 kernel feature profile;
+2. build the root filesystem in Python;
+3. implement Python early bootstrap;
+4. make CPython the first JETOS shell;
+5. write the initramfs/CPIO archive in Python;
+6. validate a real Linux kernel config against the JETOS profile;
+7. execute the assembled rootfs and reach `jetos>`.
+
+Next:
+
+1. run the initramfs with a real kernel under QEMU/HVF/KVM;
+2. confirm CPython is actually PID 1 in the VM;
+3. mount procfs/sysfs/devtmpfs from Python;
+4. add Python poweroff/reboot handling;
+5. make the kernel build reproducible from a pinned upstream source revision;
+6. minimize the imported CPython/rootfs byte footprint;
+7. implement and verify networking OFF;
+8. reproduce the boot on AArch64;
+9. begin larger C++/Bash elimination only after the boot path is reproducible.
 
 ---
 
-## 24. Canonical shorthand
+## 25. Canonical shorthand
 
 > No mysterious files.  
 > No mysterious build steps.  
@@ -819,3 +904,88 @@ The Dunicode/Unicode test driver covers:
 
 > Docker proves JETOS userspace.  
 > A hypervisor proves JETOS boot ownership.
+
+
+---
+
+## 26. Editable JETOS language fork
+
+CPython is no longer treated as an untouchable runtime dependency.
+
+JETOS treats the interpreter, parser, compiler pipeline, bytecode machinery, object model, garbage collector, standard library, and runtime as source that the project may fork and change. Compatibility with Python is useful during bootstrap, but it is not a permanent constitutional requirement. If JETOS evolves far enough, this becomes a distinct programming language descended from CPython rather than "Python with some OS scripts."
+
+The currently pinned upstream ancestor is:
+
+```text
+repository: https://github.com/python/cpython.git
+commit: 9d22a5334bd5273962adceeb697a1337e9a0ca21
+upstream branch at selection time: main
+upstream language version at that commit: 3.16.0a0
+```
+
+JETOS owns `tools/language.py`, which can create a local editable Git fork from that exact ancestor:
+
+```bash
+python tools/language.py fork ../jetos-language
+```
+
+That command:
+
+1. clones upstream CPython;
+2. checks out the exact pinned ancestor;
+3. creates a `jetos-language` Git branch;
+4. adds `Include/jetos.h`;
+5. changes the interpreter implementation identity from `cpython` to `jetos`;
+6. gives the runtime a JETOS-specific bytecode cache tag through `sys.implementation`;
+7. adds `sys.jetos_language_version`;
+8. commits the initial fork mutation locally.
+
+The fork is then normal source code. Nothing about the parser, compiler, VM, Unicode implementation, object representation, garbage collector, import system, or standard library is considered sacred.
+
+Build it using Python-owned orchestration:
+
+```bash
+python tools/language.py build ../jetos-language \
+    --build .build/jetos-language \
+    --prefix .build/jetos-language-install
+
+python tools/language.py smoke --build .build/jetos-language
+python tools/language.py install --build .build/jetos-language
+```
+
+The smoke test requires the **interpreter itself** to report:
+
+```text
+sys.implementation.name == "jetos"
+sys.jetos_language_version == "0.1"
+```
+
+Because the implementation name changes, its normal bytecode cache tag becomes JETOS-specific rather than pretending to be ordinary CPython.
+
+The installed fork can then be supplied to the JETOS root-filesystem builder:
+
+```bash
+python tools/build.py rootfs \
+    --python .build/jetos-language-install/bin/python3.16 \
+    --stdlib .build/jetos-language-install/lib/python3.16
+```
+
+### Bootstrap build machinery
+
+The upstream CPython `configure` script and Makefile are temporarily imported bootstrap machinery. JETOS does not claim those files are Python. JETOS's decisions and orchestration are Python-owned; replacing upstream shell/make build machinery is a later migration task.
+
+The same rule applies to the native compiler toolchain. GCC/other compiler source is not a sealed external appliance. It is an editable source dependency. JETOS's long-term direction remains to remove required C++ from its trusted toolchain and make the native compiler path source-visible, reproducible, and editable.
+
+### Online fork status
+
+The connected GitHub interface available during this bootstrap can write to existing repositories but does not expose GitHub's repository-fork/create operation. Therefore this PR creates the **reproducible editable source-fork mechanism** and pins the exact ancestor, but it does not falsely claim that a separate `Johnetordoff/cpython` GitHub repository has already been created.
+
+Once such a repository exists, the local `jetos-language` branch is ordinary Git and can be pushed to it without changing the JETOS architecture.
+
+### Canonical rule
+
+> The language implementation is part of the operating system.
+
+> If the language needs to change for JETOS, change the language.
+
+> No compiler, interpreter, parser, runtime, standard library, or build tool is considered uneditable merely because it came from upstream.
