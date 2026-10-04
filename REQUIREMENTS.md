@@ -1741,3 +1741,71 @@ Before attempting a real JETOS image, define these artifacts:
 12. system-test specification for boot, Python, storage, network ON/OFF, container primitives, and introspection
 
 Implementation can follow after these rules are stable enough to prevent the bootstrap repository from growing accidental complexity.
+
+---
+
+## 41. Dona Code and Unicode text model
+
+### JETOS-REQ-240 — Dona Code is the JETOS character encoding model
+
+JETOS uses the **Dona Code character encoding system** for its project-level text architecture.
+
+Dona Code MUST interoperate with Unicode.
+
+Until a more specific Dona Code byte-level specification is defined, Unicode scalar values are the semantic text model and UTF-8 is the canonical JETOS-controlled byte representation.
+
+### JETOS-REQ-241 — UTF-8 is the normal JETOS encoding
+
+JETOS-owned textual files, APIs, manifests, logs, configuration, protocols, and source files SHOULD use UTF-8 unless an external interoperability boundary requires another encoding.
+
+Legacy locale-dependent encodings MUST NOT silently determine core JETOS behavior.
+
+### JETOS-REQ-242 — Python text and binary data are distinct
+
+JETOS-owned Python code SHOULD use `str` for Unicode text and `bytes` for raw binary data.
+
+Encoding and decoding MUST occur explicitly at boundaries.
+
+### JETOS-REQ-243 — JETOS C text APIs use UTF-8
+
+JETOS-owned C interfaces carrying text SHOULD use UTF-8 and SHOULD prefer explicit byte lengths where practical.
+
+Ownership, validation state, embedded-NUL policy, and normalization requirements must be documented for each interface.
+
+### JETOS-REQ-244 — Full Unicode coverage
+
+JETOS text handling MUST support the full Unicode scalar-value range rather than assuming ASCII.
+
+The system test suite SHOULD include multilingual text, combining marks, right-to-left text, CJK, emoji, supplementary-plane characters, variation selectors, and zero-width characters.
+
+### JETOS-REQ-245 — Imported arbitrary bytes must round-trip
+
+JETOS MUST NOT assume that every pre-existing Linux/POSIX filename is valid UTF-8.
+
+JETOS-created filenames SHOULD be valid UTF-8, but arbitrary imported filename bytes must remain representable and round-trippable through a raw-path or reversible compatibility mechanism.
+
+Malformed UTF-8 MUST NOT be silently replaced and written back as different data.
+
+### JETOS-REQ-246 — Normalization is explicit
+
+JETOS MUST NOT silently normalize arbitrary Unicode text.
+
+NFC or another normalization form may be required for a specific identifier/protocol, but that requirement must be explicit.
+
+Exact filenames, hashes, provenance records, and binary identity MUST preserve their defined byte representation.
+
+### JETOS-REQ-247 — Foreign encodings are compatibility boundaries
+
+UTF-16, UTF-32, legacy code pages, and other encodings may be accepted where external systems require them, but conversion to and from the JETOS Unicode/UTF-8 model must be explicit and testable.
+
+### JETOS-REQ-248 — Unicode must remain inspectable
+
+JETOS inspection/developer tools SHOULD make potentially deceptive Unicode features visible, including bidirectional controls, invisible characters, mixed scripts, confusables, and normalization differences.
+
+Support for these characters does not imply hiding their presence.
+
+### JETOS-REQ-249 — Encoding behavior is tested
+
+JETOS system tests SHOULD cover Unicode encode/decode round trips, Python/C UTF-8 boundaries, multilingual CLI and filesystem cases, invalid UTF-8 rejection, raw filename-byte round trips, and normalization preservation.
+
+The detailed policy is maintained in `docs/architecture/TEXT_ENCODING.md`.
