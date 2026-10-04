@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""JETOS Dona Code / Unicode smoke tests."""
+"""JETOS Dunicode / Unicode smoke tests."""
 from __future__ import annotations
 
 import os
@@ -7,6 +7,8 @@ import sys
 import tempfile
 import unicodedata
 from pathlib import Path
+
+from jetos import dunicode
 
 
 CASES = [
@@ -35,10 +37,27 @@ def main() -> int:
     checks = 0
 
     for text in CASES:
-        encoded = text.encode("utf-8")
-        decoded = encoded.decode("utf-8")
-        check(decoded == text, f"UTF-8 round trip failed: {text!r}")
-        checks += 1
+        encoded = dunicode.encode(text)
+        decoded = dunicode.decode(encoded)
+        check(decoded == text, f"Dunicode/UTF-8 round trip failed: {text!r}")
+        check(dunicode.from_codepoints(dunicode.codepoints(text)) == text,
+              f"Dunicode scalar round trip failed: {text!r}")
+        checks += 2
+
+    check(dunicode.DUNICODE_VERSION == "0.1", "unexpected Dunicode version")
+    check(dunicode.label(ord("A")) == "D+0041", "ASCII Dunicode label failed")
+    check(dunicode.label(ord("🧪")) == "D+1F9EA", "emoji Dunicode label failed")
+    check(dunicode.labels("A🧪") == ("D+0041", "D+1F9EA"),
+          "Dunicode label sequence failed")
+    checks += 4
+
+    for bad_scalar in (-1, 0xD800, 0xDFFF, 0x110000):
+        try:
+            dunicode.from_codepoints([bad_scalar])
+        except ValueError:
+            checks += 1
+        else:
+            raise AssertionError(f"invalid Dunicode scalar accepted: {bad_scalar:#x}")
 
     composed = "é"
     decomposed = "e\u0301"
@@ -48,14 +67,14 @@ def main() -> int:
         "NFC normalization sanity check failed",
     )
     check(
-        decomposed.encode("utf-8").decode("utf-8") == decomposed,
+        dunicode.decode(dunicode.encode(decomposed)) == decomposed,
         "JETOS must preserve source Unicode sequence without implicit normalization",
     )
     checks += 3
 
     bad = b"\xff\xfe\xfa"
     try:
-        bad.decode("utf-8")
+        dunicode.decode(bad)
     except UnicodeDecodeError:
         checks += 1
     else:
@@ -65,7 +84,7 @@ def main() -> int:
         root = Path(temp)
         filename = "café-漢字-🧪.txt"
         p = root / filename
-        payload = "Dona Code → Unicode → UTF-8\n"
+        payload = "Dunicode ↔ Unicode ↔ UTF-8\n"
         p.write_text(payload, encoding="utf-8")
         check(p.read_text(encoding="utf-8") == payload, "Unicode filesystem I/O failed")
         check(filename in os.listdir(root), "Unicode filename did not round-trip")
@@ -84,7 +103,8 @@ def main() -> int:
     check(sys.getfilesystemencoding().lower() == "utf-8", "filesystem encoding is not UTF-8")
     checks += 1
 
-    print(f"JETOS Dona Code / Unicode: {checks} checks passed")
+    print(f"JETOS Dunicode / Unicode: {checks} checks passed")
+    print(f"Dunicode version: {dunicode.DUNICODE_VERSION}")
     print(f"filesystem encoding: {sys.getfilesystemencoding()}")
     print(f"default encoding: {sys.getdefaultencoding()}")
     return 0
