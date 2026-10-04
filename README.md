@@ -2,7 +2,7 @@
 
 JETOS is a source-oriented, Python-first operating-system project whose long-term goal is to replace the software stack on a target machine rather than merely run as an application inside another operating system.
 
-**Project state:** early bootstrap with a clone-to-build development environment, an editable JETOS language fork, Python-built root filesystem/initramfs, and a working language-shell dry run.
+**Project state:** early bootstrap with a clone-to-build development environment, an editable JETOS Language fork, Python-built root filesystem/initramfs, a working language-console dry run, and a resolution-independent Tkinter reference desktop.
 
 The current repository is intentionally small. It proves pieces of the design in Docker and in native C/Python tests. It is **not yet a standalone bootable distribution**. The next major milestone is a hypervisor-bootable JETOS image with its own selected Linux kernel, root filesystem, PID 1/bootstrap path, CPython runtime, and console.
 
@@ -43,7 +43,10 @@ The distinction between **implemented now** and **planned architecture** matters
 | Sanitizer tests | Implemented | AddressSanitizer + UndefinedBehaviorSanitizer run for the C experiment |
 | Dunicode | Implemented, v0.2 | Unicode-compatible scalar layer plus reversible character retirement/removal policy |
 | Unicode / UTF-8 | Implemented, smoke-tested | Strict UTF-8 round trips, multilingual text, emoji, combining characters, invalid UTF-8 rejection, filesystem cases |
-| Docker test image | Implemented | Reproducible userspace/test container |\n| Portable development environment | Implemented | `python jetos.py dev` builds the development container, pinned language/kernel sources, rootfs/initramfs, and launches QEMU |\n| Host setup tooling | Implemented | Python can plan/install prerequisites on macOS, common Linux distributions, and Windows |\n| Repository text export | Implemented | `python jetos.py text` prints every tracked UTF-8 JETOS source/spec file |
+| Docker test image | Implemented | Reproducible userspace/test container |
+| Portable development environment | Implemented | `python jetos.py dev` builds the development container, pinned language/kernel sources, rootfs/initramfs, and launches QEMU |
+| Host setup tooling | Implemented | Python can plan/install prerequisites on macOS, common Linux distributions, and Windows |
+| Repository text export | Implemented | `python jetos.py text` prints every tracked UTF-8 JETOS source/spec file |
 | Python rootfs builder | Implemented | CPython assembles the root filesystem and native runtime dependencies |
 | Python initramfs writer | Implemented | CPython writes the newc CPIO archive and deterministic gzip stream |
 | First CPython-shell dry run | Passed | Assembled rootfs enters a `jetos>` CPython interpreter |
@@ -51,7 +54,7 @@ The distinction between **implemented now** and **planned architecture** matters
 | JETOS kernel profile | Implemented for first x86-64 boot | Python validates and patches boot-critical Linux Kconfig values |
 | JETOS kernel build orchestration | Implemented | Python drives imported Linux Kbuild and produces `bzImage` |
 | JETOS PID 1 | Implemented, VM proof pending | `/init` is Python and execs CPython so the interpreter remains PID 1 |
-| JETOS interactive console | Implemented in dry run | The first shell is CPython itself, with `jetos>` prompt and Dunicode preloaded |
+| JETOS diagnostic console | Implemented in dry run | `jetos>` remains the fallback/debug session; the preferred boot target is now the graphical desktop when a display backend exists |
 | Full hardware discovery | Planned | Only a small Python snapshot exists today |
 | Master networking OFF switch | Planned | Defined behavior, not implemented |
 | File/provenance manifest | Planned | Required architecture, not implemented |
@@ -62,7 +65,7 @@ The distinction between **implemented now** and **planned architecture** matters
 | C++ elimination | Active experiment | C++ is migration debt; first C-equivalent component exists |
 | Bash elimination from JETOS internals | Planned | Bash may remain a user shell or quarantined build dependency |
 | Containers | Planned runtime capability | Docker is currently only a development/test vehicle |
-| GUI | Optional / planned | Installed only for device roles that require graphics |
+| GUI / desktop shell | Implemented as a host-display reference shell; guest display backend pending | Tkinter desktop with Windows-95/98-era visual language, splash screen, taskbar, Start button, clock, resizable layout, and arbitrary-resolution tests |
 | Audio | Optional / planned | Installed only for device roles that require audio |
 | x86-64 | Target | Development/test target |
 | AArch64 / ARM64 | Target | Development/test target |
@@ -782,6 +785,7 @@ src/jetos/
     __init__.py
     hardware.py
     dunicode.py
+    desktop.py
     init.py
     startup.py
 tools/
@@ -1152,3 +1156,185 @@ JETOS bootstrap tooling: 12 checks passed
 ```
 
 The full kernel + QEMU boot still needs to be executed on a development host with Docker/QEMU available; this execution environment cannot install/run QEMU itself. The repository now contains the complete path needed to perform that test rather than merely describing it.
+
+
+---
+
+## 28. Tkinter reference desktop
+
+JETOS now treats a graphical desktop as the normal human-facing session.
+
+The first desktop implementation is deliberately built with **Tkinter**, the GUI API shipped in the Python/JETOS Language standard library. This keeps the desktop itself in JETOS Language while allowing the native Tcl/Tk/window-system boundary underneath to remain an explicit replaceable implementation detail.
+
+The visual target is the simple, legible desktop language associated with mid-1990s personal computers: flat teal/quiet patterned background, gray beveled controls, dark-blue title bars, taskbar, Start-style launcher, clock, and conventional windows. JETOS does not require Microsoft code or assets for this; it implements its own shell using that era's general interaction style.
+
+### Preview it before the VM graphics path exists
+
+On any development host whose Python has Tkinter and a working graphical display:
+
+```bash
+python jetos.py gui
+```
+
+Preview a conventional 1990s size:
+
+```bash
+python jetos.py gui --geometry 640x480
+```
+
+Deliberately test strange custom geometry:
+
+```bash
+python jetos.py gui --geometry 517x301
+python jetos.py gui --geometry 191x113
+python jetos.py gui --geometry 1080x1920
+python jetos.py gui --geometry 3440x1440
+```
+
+Full-screen preview:
+
+```bash
+python jetos.py gui --fullscreen
+```
+
+Escape closes the preview. F11 toggles full screen.
+
+The first visual sequence is:
+
+```text
+black startup screen
+        ↓
+JETOS
+Starting JETOS Language…
+        ↓
+desktop
+        ├── teal patterned background
+        ├── centered empty JETOS welcome window
+        └── taskbar
+             ├── Start
+             └── clock
+```
+
+There are intentionally no desktop applications or icon assets yet. The first milestone is to prove that the operating-system shell can own layout, draw, resize, and react to a real display.
+
+### Arbitrary display geometry is a requirement
+
+JETOS does **not** define 640×480, 800×600, 1920×1080, or any other commercial resolution as a layout contract.
+
+`src/jetos/desktop.py` separates layout policy from Tk rendering. The layout engine receives the actual pixel width and height and computes every rectangle from that geometry. 640×480 is only a visual reference scale.
+
+The headless test suite currently exercises:
+
+```text
+1x1
+64x32
+191x113
+320x200
+320x240
+517x301
+640x480
+800x600
+1024x768
+1280x720
+1366x768
+1920x1080
+1080x1920
+2560x1080
+3440x1440
+3840x2160
+7680x4320
+```
+
+For every one of those geometries it verifies that the screen, taskbar, Start control, clock, and first window remain positive-sized and inside their containing geometry.
+
+The test is intentionally harsher than commercial monitor lists. Custom and tiny geometries are useful because they reveal assumptions that ordinary 16:9 testing can hide.
+
+### Boot target
+
+`src/jetos/init.py` now treats `desktop` as the default JETOS boot target.
+
+When a usable display/window-system boundary exists, PID 1 enters the Tkinter desktop. Closing the desktop falls back to the JETOS Language diagnostic console instead of terminating PID 1.
+
+When there is no display backend, JETOS says so and falls back to:
+
+```text
+jetos>
+```
+
+That fallback is important during the current VM stage because the existing minimal initramfs does not yet contain a Linux guest display server.
+
+### What Tkinter means here
+
+The Python API is standard-library-facing:
+
+```text
+JETOS Language
+    ↓
+tkinter
+    ↓
+_tkinter native extension
+    ↓
+Tcl/Tk
+    ↓
+native window-system backend
+```
+
+The Docker/JETOS Language build environment now includes Tcl/Tk and X11 development headers so the editable JETOS Language fork can compile its own `_tkinter` extension.
+
+This does **not** mean Tcl/Tk or X11 are permanent JETOS architecture. They are current native substrate and may be forked, reduced, replaced, or given a more direct JETOS display backend later.
+
+### The missing VM graphics boundary
+
+The current QEMU boot path still starts as a serial-console machine. Tk on Linux ordinarily expects a window-system backend such as X11. Therefore the next graphical-boot integration milestone is:
+
+```text
+QEMU virtual GPU/display
+        ↓
+Linux DRM/KMS driver
+        ↓
+minimal guest display/window-system boundary
+        ↓
+Tcl/Tk / _tkinter
+        ↓
+JETOS Tkinter desktop
+```
+
+Until that is present, `python jetos.py gui` proves the desktop shell and arbitrary-resolution design on a normal graphical host, while `python jetos.py dev` proves the OS/kernel/rootfs side.
+
+The goal is to join those two proof paths so a QEMU window or VNC view shows the same JETOS desktop after the kernel boots.
+
+### Performance rule
+
+The desktop API remains JETOS Language even when expensive primitives move native.
+
+For example:
+
+```python
+screen.blit(buffer, x, y)
+window.paint()
+font.rasterize(text)
+```
+
+may stay as Python-facing operations while pixel copies, compositing, font rasterization, codecs, or other measured hotspots are implemented as small readable C extensions.
+
+The rule remains:
+
+> Write the operating-system behavior in JETOS Language.
+
+> Measure it.
+
+> Move only measured hot primitives into readable native implementations while preserving the JETOS Language API.
+
+This lets JETOS optimize directly against its own operating-system workload instead of importing a large C++ desktop framework merely to draw windows.
+
+### Current verification boundary
+
+The Tk/Tcl runtime is available in the ChatGPT execution environment, but that environment does not have a functioning attached graphical display. Therefore the layout engine can be tested here, but this work does **not** claim that the rendered desktop has been visually observed in this environment.
+
+The purpose of this PR is to give a normal development machine a concrete command to perform that visual test:
+
+```bash
+python jetos.py gui --geometry 640x480
+```
+
+and to make the result the target desktop shell that will subsequently be connected to the VM's virtual display.
