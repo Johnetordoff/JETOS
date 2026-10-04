@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for the JETOS language-fork source transformation."""
+"""Tests for the JETOS Language source transformation."""
 from __future__ import annotations
 
 import importlib.util
@@ -18,9 +18,8 @@ SPEC.loader.exec_module(language)
 UPSTREAM_SYSMODULE_FIXTURE = """\
 #include "Python.h"
 
-#ifndef _PY_IMPL_NAME
-#define _PY_IMPL_NAME "cpython"
-#endif
+/* sys.implementation values */
+#define NAME "cpython"
 
 static int init_sys(void)
 {
@@ -31,8 +30,10 @@ static int init_sys(void)
 
 UPSTREAM_PATCHLEVEL_FIXTURE = """\
 #define PY_MAJOR_VERSION 3
-#define PY_MINOR_VERSION 16
-#define PY_VERSION "3.16.0a0"
+#define PY_MINOR_VERSION 14
+#define PY_MICRO_VERSION 8
+#define PY_RELEASE_LEVEL PY_RELEASE_LEVEL_FINAL
+#define PY_VERSION "3.14.8"
 """
 
 
@@ -43,6 +44,13 @@ def check(condition: bool, message: str) -> None:
 
 def main() -> int:
     checks = 0
+    check(language.UPSTREAM_VERSION == "3.14.8", "stable base version")
+    check(
+        language.UPSTREAM_COMMIT == "8e6e75d9102e39bed2a2b279203a396741180f12",
+        "stable base commit",
+    )
+    checks += 2
+
     with tempfile.TemporaryDirectory() as temp:
         source = Path(temp)
         (source / "Python").mkdir()
@@ -70,33 +78,46 @@ def main() -> int:
             "language version missing",
         )
         check(
+            f'#define JETOS_CPYTHON_VERSION "{language.UPSTREAM_VERSION}"' in header,
+            "Python base version missing",
+        )
+        check(
             f'#define JETOS_CPYTHON_BASE "{language.UPSTREAM_COMMIT}"' in header,
             "upstream base missing",
         )
         check('#include "jetos.h"' in sysmodule, "JETOS header not included")
-        check('#define _PY_IMPL_NAME "jetos"' in sysmodule, "implementation not renamed")
+        check('#define NAME "jetos"' in sysmodule, "implementation not renamed")
         check(
             'SET_SYS_FROM_STRING("jetos_language_version", JETOS_LANGUAGE_VERSION);'
             in sysmodule,
             "sys.jetos_language_version not installed",
         )
-        checks += 5
+        check(
+            'SET_SYS_FROM_STRING("jetos_python_base_version", JETOS_CPYTHON_VERSION);'
+            in sysmodule,
+            "sys.jetos_python_base_version not installed",
+        )
+        checks += 7
 
         changed_again = language.patch_source(source)
         check(changed_again == [], "patch is not idempotent")
         checks += 1
 
         check(
-            sysmodule.count('#define _PY_IMPL_NAME "jetos"') == 1,
+            sysmodule.count('#define NAME "jetos"') == 1,
             "duplicate implementation identity",
         )
         check(
             sysmodule.count("jetos_language_version") == 1,
-            "duplicate JETOS sys field",
+            "duplicate JETOS language field",
         )
-        checks += 2
+        check(
+            sysmodule.count("jetos_python_base_version") == 1,
+            "duplicate stable Python base field",
+        )
+        checks += 3
 
-    print(f"JETOS language fork tooling: {checks} checks passed")
+    print(f"JETOS Language fork tooling: {checks} checks passed")
     return 0
 
 
