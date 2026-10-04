@@ -1,0 +1,113 @@
+JETOS AGENT INSTRUCTIONS
+========================
+
+This file is authoritative guidance for humans and coding agents working in
+this repository.
+
+PROJECT IDENTITY
+----------------
+JETOS is an operating system whose normal implementation/control language is
+JETOS Language: a directly editable fork of the latest STABLE CPython release.
+It is not "Linux plus some Python scripts".  Linux is current native substrate;
+JETOS Language is intended to own as much operating-system behavior as can
+correctly execute above that substrate.
+
+PYTHON VERSION POLICY
+---------------------
+1. JETOS Language tracks the newest stable CPython feature/maintenance release.
+2. Never pin JETOS to CPython main, alpha, beta, or release-candidate source.
+3. When Python.org publishes a newer stable release, updating the pinned base is
+   a priority maintenance change and should happen before unrelated release work.
+4. Every Python-base update must pin an exact upstream commit and version.
+5. Preserve JETOS patches as small, readable changes that can be replayed on the
+   next stable CPython release.
+6. Current pinned stable base: Python 3.14.8, commit
+   8e6e75d9102e39bed2a2b279203a396741180f12.
+
+STANDARD-LIBRARY-ONLY RULE
+--------------------------
+1. JETOS-owned Python code may import only:
+   - the Python/JETOS Language standard library; and
+   - other JETOS-owned modules from this repository.
+2. Do not add pip, PyPI, requirements.txt dependencies, poetry, uv, conda, or a
+   vendored third-party Python package to implement JETOS behavior.
+3. tkinter is allowed because it is the standard-library GUI API.  Its native
+   Tcl/Tk dependency is imported native substrate and must remain explicit.
+4. Native libraries and external build tools may be used only at documented
+   native/bootstrap boundaries (kernel, compiler, libc, Tcl/Tk, QEMU, etc.).
+5. If functionality can be implemented reasonably with the standard library,
+   implement it there first.
+
+PYTHON FIRST, NATIVE WHEN MEASURED
+----------------------------------
+1. If JETOS Language can do an operation correctly, implement it there first.
+2. Measure before moving a hot path native.
+3. A measured hot primitive may become a small readable C extension while its
+   public control/API remains JETOS Language.
+4. Native C extensions must be written for subinterpreter safety where relevant.
+5. Release the GIL around long-running native work where correct and beneficial.
+6. Free-threaded CPython builds may be evaluated with --disable-gil, but are not
+   a substitute for correct synchronization or measurement.
+7. New JETOS-owned C++ is prohibited.  Existing imported C++ is migration debt.
+8. Assembly is limited to architecture-required boundaries.
+
+SUBINTERPRETER MODEL
+--------------------
+1. The main JETOS Language interpreter is the OS supervisor/interpreter.
+2. Isolated subinterpreters are the preferred in-process isolation boundary for
+   capability services when they improve ownership, failure separation, or
+   parallelism.
+3. Default granularity is one interpreter per capability/service domain (for
+   example display, network, storage, audio, input, power).
+4. One interpreter per physical device is allowed when measurement or isolation
+   makes that useful; it is not mandatory.
+5. Use message passing and explicit immutable/copyable data between interpreters.
+   Do not create accidental shared mutable global state.
+6. Subinterpreters are not a security sandbox.  They share a process and native
+   extensions can violate isolation.
+7. Since isolated interpreters have separate GILs in modern CPython, putting
+   service interpreters on separate OS threads can provide multi-core execution.
+8. Any C extension used across service interpreters must explicitly support
+   multiple interpreters rather than assuming process-global Python state.
+
+HARDWARE AND CAPABILITIES
+-------------------------
+1. Discover the machine; do not assume a laptop/desktop/server role from shape.
+2. Preserve evidence for each discovered capability.
+3. Distinguish capability exists / implementation installed / policy permits /
+   currently active.
+4. The desktop/app registry should be generated from discovered capabilities.
+5. Terminal and System diagnostics remain universally available.
+6. Prefer Linux's structured kernel interfaces (/sys, /proc, /dev, netlink,
+   uevents, DRM/KMS, ACPI, Device Tree) over brittle command-output scraping.
+
+DISPLAY/UI
+----------
+1. The standard JETOS GUI API is tkinter unless/until JETOS Language replaces it
+   with another standard-library GUI API.
+2. The reference desktop uses a Windows-95/98-era interaction/aesthetic language
+   without Microsoft code/assets.
+3. Never hard-code a commercial display resolution as a requirement.
+4. Layout must derive from actual display geometry and survive odd/custom sizes.
+5. Keep layout policy separable from the renderer so geometry is headless-testable.
+
+BOOT AND BUILD
+--------------
+1. JETOS-owned build/orchestration logic is Python.
+2. Generated kernels, imported upstream trees, root filesystems, and images live
+   under .build/ and are not committed as opaque blobs.
+3. Pin upstream inputs exactly.
+4. Docker is an optional reproducible build environment, not JETOS architecture.
+5. QEMU/hypervisors are test computers, not JETOS architecture.
+6. Do not enable destructive bare-metal installation until recovery/storage paths
+   are proven and the user explicitly requests it.
+
+REPOSITORY HYGIENE
+------------------
+1. Keep source small, readable, inspectable, and deterministic.
+2. README.md remains the single Markdown architecture document; use plain text
+   for special machine/agent policy files such as this one.
+3. No mysterious files, build steps, languages, or generated source blobs.
+4. Run the repository tests before claiming a behavior works.
+5. State execution boundaries honestly: implemented, statically tested,
+   dry-run-tested, VM-boot-tested, and bare-metal-tested are different claims.
