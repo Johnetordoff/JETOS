@@ -1,4 +1,4 @@
-FROM python:3.13-slim
+FROM python:3.14.8-slim
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -42,5 +42,7 @@ RUN python tools/test_language.py
 RUN python tools/test_bootstrap.py
 RUN python tools/test_capabilities.py
 RUN python tools/test_desktop.py
+RUN python tools/test_policy.py
+RUN python tools/test_interpreters.py
 
 CMD ["python", "jetos.py", "doctor"]
