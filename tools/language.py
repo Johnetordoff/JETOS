@@ -146,11 +146,13 @@ def source_status(source: Path) -> None:
         capture=True,
     ).stdout.strip()
     text = (source / "Python/sysmodule.c").read_text(encoding="utf-8")
+    implementation_is_jetos = '#define NAME "jetos"' in text
+    identity_header_exists = (source / "Include/jetos.h").exists()
     print(f"head: {head}")
     print(f"branch: {branch or '(detached)'}")
     print(f"stable Python base: {UPSTREAM_VERSION}")
-    print(f"JETOS implementation name: {'yes' if '#define NAME \"jetos\"' in text else 'no'}")
-    print(f"JETOS identity header: {'yes' if (source / 'Include/jetos.h').exists() else 'no'}")
+    print(f"JETOS implementation name: {'yes' if implementation_is_jetos else 'no'}")
+    print(f"JETOS identity header: {'yes' if identity_header_exists else 'no'}")
 
 
 def configure_and_build(
@@ -190,7 +192,8 @@ def smoke(build: Path) -> None:
         "assert sys.implementation.supports_isolated_interpreters; "
         "from concurrent import interpreters; "
         "i = interpreters.create(); "
-        "assert i.call(lambda: 6 * 7) == 42; i.close(); "
+        "i.exec('assert 6 * 7 == 42'); "
+        "i.close(); "
         "print('implementation:', sys.implementation.name); "
         "print('cache tag:', sys.implementation.cache_tag); "
         "print('language version:', sys.jetos_language_version); "
@@ -213,11 +216,17 @@ def main() -> int:
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    fork = sub.add_parser("fork", help="clone latest pinned stable CPython and create JETOS Language")
+    fork = sub.add_parser(
+        "fork",
+        help="clone the pinned latest stable CPython and create JETOS Language",
+    )
     fork.add_argument("destination", type=Path)
     fork.add_argument("--upstream", default=UPSTREAM_REPOSITORY)
 
-    patch = sub.add_parser("patch", help="apply JETOS identity to an existing stable CPython source tree")
+    patch = sub.add_parser(
+        "patch",
+        help="apply JETOS identity to an existing stable CPython source tree",
+    )
     patch.add_argument("source", type=Path)
 
     status = sub.add_parser("status", help="show JETOS Language source identity")
@@ -231,7 +240,7 @@ def main() -> int:
     build.add_argument(
         "--free-threaded",
         action="store_true",
-        help="also configure CPython's free-threaded --disable-gil build mode",
+        help="configure CPython's optional --disable-gil build mode",
     )
 
     test = sub.add_parser("smoke", help="verify the built interpreter identifies as JETOS")
