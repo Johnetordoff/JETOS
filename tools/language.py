@@ -142,8 +142,10 @@ def source_status(source: Path) -> None:
     text = (source / "Python/sysmodule.c").read_text(encoding="utf-8")
     print(f"head: {head}")
     print(f"branch: {branch or '(detached)'}")
-    print(f"JETOS implementation name: {'yes' if '#define _PY_IMPL_NAME \"jetos\"' in text else 'no'}")
-    print(f"JETOS identity header: {'yes' if (source / 'Include/jetos.h').exists() else 'no'}")
+    implementation_is_jetos = '#define _PY_IMPL_NAME "jetos"' in text
+    identity_header_exists = (source / "Include/jetos.h").exists()
+    print(f"JETOS implementation name: {'yes' if implementation_is_jetos else 'no'}")
+    print(f"JETOS identity header: {'yes' if identity_header_exists else 'no'}")
 
 
 def configure_and_build(
