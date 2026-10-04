@@ -52,7 +52,7 @@ def docker_dev(build_only: bool) -> None:
         "tools/dev.py",
         "build" if build_only else "run",
     ])
-    os.execvp(docker, command)
+    raise SystemExit(subprocess.call(command, cwd=ROOT))
 
 
 def print_all_text() -> None:
