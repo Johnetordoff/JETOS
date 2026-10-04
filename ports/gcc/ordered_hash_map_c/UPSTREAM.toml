@@ -1,0 +1,15 @@
+project = "GCC"
+repository = "https://github.com/gcc-mirror/gcc"
+commit = "4bf11aca586c9eef753b6f76d29ae19e1b505694"
+commit_date_utc = "2026-10-03T19:30:31Z"
+license = "GPL-3.0-or-later"
+
+[[source]]
+path = "gcc/ordered-hash-map.h"
+blob_sha = "3331394d985820d10ad2150a1c35ceec8f13985b"
+role = "C++ behavior/source reference"
+
+[[source]]
+path = "gcc/ordered-hash-map-tests.cc"
+blob_sha = "b033bc5b7c2c7013cd5b54fd0eef3bb43b85ad16"
+role = "Upstream behavioral acceptance cases"
