@@ -11,4 +11,10 @@ Language direction:
 - C++ is migration debt.
 - Bash may exist as a shell or in quarantined package-build environments, but not as the JETOS control language.
 
+Text direction:
+- Dona Code is the JETOS character-encoding model.
+- Unicode is supported across JETOS text APIs.
+- UTF-8 is the canonical encoding when JETOS controls the byte representation.
+- Raw byte data remains explicitly representable at compatibility boundaries.
+
 See `PHILOSOPHY.md`, `REQUIREMENTS.md`, and `docs/architecture/`.
