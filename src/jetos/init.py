@@ -8,7 +8,7 @@ from pathlib import Path
 import platform
 import sys
 
-from jetos import hardware
+from jetos import hardware, storage
 from jetos.interpreters import InterpreterSupervisor, plan_services, supported
 
 
@@ -52,7 +52,10 @@ def mount_kernel_filesystems() -> None:
     _mount("sysfs", "/sys", "sysfs")
 
 
-def _print_boot_record(snapshot: dict[str, object]) -> None:
+def _print_boot_record(
+    snapshot: dict[str, object],
+    storage_policy: storage.StoragePolicy,
+) -> None:
     capabilities = snapshot.get("capabilities", {})
     present = []
     if isinstance(capabilities, dict):
@@ -79,6 +82,11 @@ def _print_boot_record(snapshot: dict[str, object]) -> None:
     print("Unicode: supported", flush=True)
     print("encoding: UTF-8", flush=True)
     print("network policy: OFF by default", flush=True)
+    print(
+        "persistent storage encryption policy: "
+        f"{'ON' if storage_policy.encryption_enabled else 'OFF'}",
+        flush=True,
+    )
 
 
 def _start_services(
@@ -106,14 +114,16 @@ def _start_services(
 def _run_console(
     snapshot: dict[str, object],
     supervisor: InterpreterSupervisor | None,
+    storage_policy: storage.StoragePolicy,
 ) -> None:
     print("session: JETOS Language diagnostic console", flush=True)
-    print("objects: snapshot, hardware, supervisor", flush=True)
+    print("objects: snapshot, hardware, supervisor, storage_policy", flush=True)
     print("", flush=True)
     namespace = {
         "snapshot": snapshot,
         "hardware": hardware,
         "supervisor": supervisor,
+        "storage_policy": storage_policy,
     }
     code.interact(
         banner="JETOS Language console",
@@ -129,7 +139,6 @@ def _display_available() -> bool:
 
 
 def _run_desktop() -> bool:
-    """Run the standard-library GUI desktop if the display boundary exists."""
     if not _display_available():
         print(
             "desktop: unavailable (no guest display server/backend yet)",
@@ -162,15 +171,16 @@ def main() -> None:
     os.environ.setdefault("LANG", "C.UTF-8")
     os.environ.setdefault("LC_ALL", "C.UTF-8")
 
+    storage_policy = storage.policy_from_cmdline()
     snapshot = hardware.discover()
-    _print_boot_record(snapshot)
+    _print_boot_record(snapshot, storage_policy)
     supervisor = _start_services(snapshot)
 
     try:
         target = os.environ.get("JETOS_BOOT_TARGET", "desktop").lower()
         if target == "desktop":
             _run_desktop()
-        _run_console(snapshot, supervisor)
+        _run_console(snapshot, supervisor, storage_policy)
     finally:
         if supervisor is not None:
             supervisor.close_all()

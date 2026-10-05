@@ -1,17 +1,18 @@
 """JETOS persistent-storage encryption policy.
 
-JETOS does not implement novel file encryption in Python. Ordinary persistent
-files are expected to live on a Linux dm-crypt-backed volume so normal open(),
-read(), write(), mmap(), and page-cache behavior remain transparent while bytes
-at rest are encrypted below the filesystem.
+Persistent encryption is a policy of the storage domain, not a Python file
+format.  Normal JETOS I/O stays ordinary; dm-crypt/LUKS is the initial native
+implementation beneath the filesystem.
 
-Plaintext in RAM is expected while data is in use. Plaintext persistent storage
-is an explicit, auditable exception and must never be a hidden bypass.
+The global policy defaults to encryption ON.  It may be deliberately turned
+OFF for a development/test system, and individual path scopes may override the
+global choice in either direction.  Every override is explicit and auditable.
 """
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from pathlib import Path
+import json
 import os
 from typing import Iterable
 
@@ -38,6 +39,7 @@ class StorageState:
     disposition: str
     encrypted: bool
     persistent: bool
+    encryption_required: bool
     evidence: tuple[str, ...] = ()
 
     def as_dict(self) -> dict[str, object]:
@@ -45,10 +47,30 @@ class StorageState:
 
 
 @dataclass(frozen=True)
+class EncryptionOverride:
+    """Explicit per-scope override of the global encryption requirement."""
+
+    prefix: str
+    enabled: bool
+    reason: str
+    owner: str = "JETOS"
+
+
+@dataclass(frozen=True)
 class PlaintextException:
+    """Compatibility spelling for an explicit encryption-disabled scope."""
+
     prefix: str
     reason: str
     owner: str = "JETOS"
+
+    def as_override(self) -> EncryptionOverride:
+        return EncryptionOverride(
+            prefix=self.prefix,
+            enabled=False,
+            reason=self.reason,
+            owner=self.owner,
+        )
 
 
 class StoragePolicyError(RuntimeError):
@@ -58,10 +80,9 @@ class StoragePolicyError(RuntimeError):
 class PlaintextMemoryCache:
     """Best-effort in-memory cache for decrypted disposable bytes.
 
-    Values are kept only in process memory. bytearray is used so clear() can
-    overwrite the cache's own buffers before releasing them. This is NOT a
-    guarantee that CPython, the allocator, the kernel, or hardware retained no
-    additional copies; callers must not claim cryptographic memory erasure.
+    Values are process-memory only.  bytearray permits overwriting this cache's
+    own buffers before release, but CPython/the allocator/kernel/hardware may
+    have retained copies.  This is not a cryptographic memory-erasure guarantee.
     """
 
     def __init__(self) -> None:
@@ -77,9 +98,8 @@ class PlaintextMemoryCache:
 
     def drop(self, key: str) -> None:
         value = self._values.pop(key, None)
-        if value is None:
-            return
-        value[:] = b"\x00" * len(value)
+        if value is not None:
+            value[:] = b"\x00" * len(value)
 
     def clear(self) -> None:
         for key in tuple(self._values):
@@ -93,7 +113,6 @@ class PlaintextMemoryCache:
 
 
 def _unescape_mount_field(value: str) -> str:
-    # mountinfo escapes space/tab/newline/backslash as octal sequences.
     replacements = {
         "\\040": " ",
         "\\011": "\t",
@@ -159,18 +178,11 @@ def _children(path: Path) -> tuple[Path, ...]:
 
 
 def _is_dm_crypt_uuid(value: str | None) -> bool:
-    if not value:
-        return False
-    upper = value.upper()
-    return any(upper.startswith(prefix) for prefix in DM_CRYPT_UUID_PREFIXES)
+    return bool(value and value.upper().startswith(DM_CRYPT_UUID_PREFIXES))
 
 
 def encryption_chain(root: Path, major_minor: str) -> tuple[bool, tuple[str, ...]]:
-    """Walk a block-device stack looking for a dm-crypt layer.
-
-    This handles common layouts such as ext4 -> LVM -> dm-crypt -> disk instead
-    of requiring the mounted filesystem's immediate device to be dm-crypt.
-    """
+    """Walk stacked Linux block devices looking for a dm-crypt layer."""
     seen: set[str] = set()
     evidence: list[str] = []
 
@@ -201,17 +213,41 @@ def encryption_chain(root: Path, major_minor: str) -> tuple[bool, tuple[str, ...
     return walk(major_minor), tuple(evidence)
 
 
+def parse_encryption_mode(value: str | bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    normalized = value.strip().lower()
+    if normalized in {"on", "true", "yes", "1", "required"}:
+        return True
+    if normalized in {"off", "false", "no", "0", "disabled"}:
+        return False
+    raise ValueError(f"invalid encryption mode: {value!r}")
+
+
+def encryption_from_cmdline(text: str, default: bool = True) -> bool:
+    enabled = default
+    for item in text.split():
+        if item.startswith("jetos.encryption="):
+            enabled = parse_encryption_mode(item.split("=", 1)[1])
+    return enabled
+
+
 class StoragePolicy:
-    """Classify paths and enforce JETOS persistent-encryption rules."""
+    """Classify paths and enforce a global+scoped encryption policy."""
 
     def __init__(
         self,
         *,
         root: str | os.PathLike[str] = "/",
+        encryption_enabled: bool = True,
+        overrides: Iterable[EncryptionOverride] = (),
         plaintext_exceptions: Iterable[PlaintextException] = (),
     ) -> None:
         self.root = Path(root)
-        self.plaintext_exceptions = tuple(plaintext_exceptions)
+        self.encryption_enabled = bool(encryption_enabled)
+        self.overrides = tuple(overrides) + tuple(
+            exception.as_override() for exception in plaintext_exceptions
+        )
 
     def mounts(self) -> tuple[MountRecord, ...]:
         text = _read_text(self.root / "proc/self/mountinfo")
@@ -219,12 +255,8 @@ class StoragePolicy:
             raise StoragePolicyError("/proc/self/mountinfo is unavailable")
         return parse_mountinfo(text)
 
-    def _exception_for(self, path: str) -> PlaintextException | None:
-        matches = [
-            exception
-            for exception in self.plaintext_exceptions
-            if _contains(path, exception.prefix)
-        ]
+    def _override_for(self, path: str) -> EncryptionOverride | None:
+        matches = [override for override in self.overrides if _contains(path, override.prefix)]
         if not matches:
             return None
         return max(matches, key=lambda item: len(os.path.normpath(item.prefix)))
@@ -232,12 +264,23 @@ class StoragePolicy:
     def inspect(self, path: str | os.PathLike[str]) -> StorageState:
         absolute = os.path.abspath(os.fspath(path))
         mount = mount_for_path(absolute, self.mounts())
+        override = self._override_for(absolute)
+        required = self.encryption_enabled if override is None else override.enabled
         evidence = [
             f"mount:{mount.mountpoint}",
             f"filesystem:{mount.filesystem}",
             f"source:{mount.source}",
             f"device:{mount.major_minor}",
+            f"global-encryption:{'on' if self.encryption_enabled else 'off'}",
         ]
+        if override is not None:
+            evidence.extend(
+                [
+                    f"override:{override.prefix}:{'on' if override.enabled else 'off'}",
+                    f"reason:{override.reason}",
+                    f"owner:{override.owner}",
+                ]
+            )
 
         if mount.filesystem in MEMORY_FILESYSTEMS:
             return StorageState(
@@ -249,6 +292,7 @@ class StoragePolicy:
                 "memory-plaintext",
                 encrypted=False,
                 persistent=False,
+                encryption_required=False,
                 evidence=tuple(evidence + ["ephemeral-memory-filesystem"]),
             )
 
@@ -264,27 +308,21 @@ class StoragePolicy:
                 "encrypted",
                 encrypted=True,
                 persistent=True,
+                encryption_required=required,
                 evidence=tuple(evidence),
             )
 
-        exception = self._exception_for(absolute)
-        if exception is not None:
-            evidence.extend(
-                [
-                    f"plaintext-exception:{exception.prefix}",
-                    f"reason:{exception.reason}",
-                    f"owner:{exception.owner}",
-                ]
-            )
+        if not required:
             return StorageState(
                 absolute,
                 mount.mountpoint,
                 mount.filesystem,
                 mount.source,
                 mount.major_minor,
-                "plaintext-exception",
+                "plaintext-authorized",
                 encrypted=False,
                 persistent=True,
+                encryption_required=False,
                 evidence=tuple(evidence),
             )
 
@@ -297,6 +335,7 @@ class StoragePolicy:
             "unprotected",
             encrypted=False,
             persistent=True,
+            encryption_required=True,
             evidence=tuple(evidence),
         )
 
@@ -304,31 +343,79 @@ class StoragePolicy:
         state = self.inspect(path)
         if state.disposition == "unprotected":
             raise StoragePolicyError(
-                f"persistent path is not protected by dm-crypt and has no "
-                f"explicit plaintext exception: {state.path}"
+                "persistent path requires encryption but no dm-crypt layer was found: "
+                f"{state.path}"
             )
         return state
 
 
-def default_policy(root: str | os.PathLike[str] = "/") -> StoragePolicy:
-    # The early boot partition may need to remain readable by firmware. It may
-    # contain only non-secret boot artifacts. Additional exceptions require an
-    # explicit policy change; there is intentionally no secret bypass flag.
-    return StoragePolicy(
-        root=root,
-        plaintext_exceptions=(
-            PlaintextException(
-                "/boot",
-                "firmware-readable boot artifacts only; no user secrets",
-                owner="JETOS boot policy",
-            ),
+def default_overrides() -> tuple[EncryptionOverride, ...]:
+    return (
+        EncryptionOverride(
+            "/boot",
+            enabled=False,
+            reason="firmware-readable boot artifacts only; no user secrets",
+            owner="JETOS boot policy",
         ),
     )
+
+
+def default_policy(
+    root: str | os.PathLike[str] = "/",
+    *,
+    encryption_enabled: bool = True,
+    overrides: Iterable[EncryptionOverride] = (),
+) -> StoragePolicy:
+    return StoragePolicy(
+        root=root,
+        encryption_enabled=encryption_enabled,
+        overrides=(*default_overrides(), *tuple(overrides)),
+    )
+
+
+def policy_from_cmdline(root: str | os.PathLike[str] = "/") -> StoragePolicy:
+    root_path = Path(root)
+    cmdline = _read_text(root_path / "proc/cmdline") or ""
+    return default_policy(
+        root=root,
+        encryption_enabled=encryption_from_cmdline(cmdline, default=True),
+    )
+
+
+def load_policy(path: str | os.PathLike[str], *, root: str | os.PathLike[str] = "/") -> StoragePolicy:
+    """Load explicit global/scoped policy from a small JSON file."""
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise StoragePolicyError("storage policy JSON must be an object")
+    enabled = parse_encryption_mode(data.get("encryption", True))
+    raw_overrides = data.get("overrides", [])
+    if not isinstance(raw_overrides, list):
+        raise StoragePolicyError("storage policy overrides must be a list")
+    overrides: list[EncryptionOverride] = []
+    for item in raw_overrides:
+        if not isinstance(item, dict):
+            raise StoragePolicyError("each storage override must be an object")
+        try:
+            prefix = os.fspath(item["prefix"])
+            override_enabled = parse_encryption_mode(item["encryption"])
+            reason = str(item["reason"])
+        except KeyError as error:
+            raise StoragePolicyError(f"missing storage override field: {error.args[0]}") from error
+        overrides.append(
+            EncryptionOverride(
+                prefix=prefix,
+                enabled=override_enabled,
+                reason=reason,
+                owner=str(item.get("owner", "JETOS storage policy")),
+            )
+        )
+    return default_policy(root=root, encryption_enabled=enabled, overrides=overrides)
 
 
 def status(
     path: str | os.PathLike[str] = "/",
     *,
     root: str | os.PathLike[str] = "/",
+    encryption_enabled: bool = True,
 ) -> dict[str, object]:
-    return default_policy(root).inspect(path).as_dict()
+    return default_policy(root, encryption_enabled=encryption_enabled).inspect(path).as_dict()

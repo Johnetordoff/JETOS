@@ -2,31 +2,11 @@ FROM python:3.14.8-slim
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        git \
-        gcc \
-        make \
-        binutils \
-        libc6-dev \
-        bc \
-        bison \
-        flex \
-        libssl-dev \
-        libelf-dev \
-        dwarves \
-        pkg-config \
-        libffi-dev \
-        zlib1g-dev \
-        libbz2-dev \
-        libreadline-dev \
-        libsqlite3-dev \
-        liblzma-dev \
-        uuid-dev \
-        xz-utils \
-        tcl-dev \
-        tk-dev \
-        libx11-dev \
-        qemu-system-x86 \
-        qemu-system-arm \
+        git gcc make binutils libc6-dev bc bison flex \
+        libssl-dev libelf-dev dwarves pkg-config libffi-dev \
+        zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev \
+        liblzma-dev uuid-dev xz-utils tcl-dev tk-dev libx11-dev \
+        xvfb x11vnc qemu-system-x86 qemu-system-arm \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /jetos
@@ -45,6 +25,8 @@ RUN python tools/test_desktop.py
 RUN python tools/test_policy.py
 RUN python tools/test_interpreters.py
 RUN python tools/test_storage.py
+RUN python tools/test_storage_modes.py
+RUN python tools/test_runtime_image.py
 RUN python tools/python_release.py check --offline-ok
 
 CMD ["python", "jetos.py", "doctor"]

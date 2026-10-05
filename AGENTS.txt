@@ -8,7 +8,7 @@ PROJECT IDENTITY
 ----------------
 JETOS is an operating system whose normal implementation/control language is
 JETOS Language: a directly editable fork of the latest STABLE CPython release.
-It is not "Linux plus some Python scripts".  Linux is current native substrate;
+It is not "Linux plus some Python scripts". Linux is current native substrate;
 JETOS Language is intended to own as much operating-system behavior as can
 correctly execute above that substrate.
 
@@ -19,24 +19,22 @@ PYTHON VERSION POLICY
 3. When Python.org publishes a newer stable release, updating the pinned base is
    a priority maintenance change and should happen before unrelated release work.
 4. Every Python-base update must pin an exact upstream commit and version.
-5. Preserve JETOS patches as small, readable changes that can be replayed on the
-   next stable CPython release.
+5. Preserve JETOS patches as small, readable changes replayable on the next
+   stable CPython release.
 6. Current pinned stable base: Python 3.14.8, commit
    8e6e75d9102e39bed2a2b279203a396741180f12.
 
 STANDARD-LIBRARY-ONLY RULE
 --------------------------
-1. JETOS-owned Python code may import only:
-   - the Python/JETOS Language standard library; and
-   - other JETOS-owned modules from this repository.
-2. Do not add pip, PyPI, requirements.txt dependencies, poetry, uv, conda, or a
-   vendored third-party Python package to implement JETOS behavior.
-3. tkinter is allowed because it is the standard-library GUI API.  Its native
-   Tcl/Tk dependency is imported native substrate and must remain explicit.
-4. Native libraries and external build tools may be used only at documented
-   native/bootstrap boundaries (kernel, compiler, libc, Tcl/Tk, QEMU, etc.).
-5. If functionality can be implemented reasonably with the standard library,
-   implement it there first.
+1. JETOS-owned Python code may import only the Python/JETOS Language standard
+   library and other JETOS-owned modules from this repository.
+2. Do not add pip/PyPI runtime dependencies, requirements.txt, poetry, uv, conda,
+   or vendored third-party Python packages for JETOS behavior.
+3. tkinter is allowed because it is the standard-library GUI API. Its Tcl/Tk
+   dependency is explicit native substrate.
+4. Native libraries/external build tools are allowed only at documented native
+   or bootstrap boundaries (kernel, compiler, libc, Tcl/Tk, QEMU, etc.).
+5. If standard library code can implement something reasonably, start there.
 
 PYTHON FIRST, NATIVE WHEN MEASURED
 ----------------------------------
@@ -44,42 +42,36 @@ PYTHON FIRST, NATIVE WHEN MEASURED
 2. Measure before moving a hot path native.
 3. A measured hot primitive may become a small readable C extension while its
    public control/API remains JETOS Language.
-4. Native C extensions must be written for subinterpreter safety where relevant.
-5. Release the GIL around long-running native work where correct and beneficial.
-6. Free-threaded CPython builds may be evaluated with --disable-gil, but are not
-   a substitute for correct synchronization or measurement.
-7. New JETOS-owned C++ is prohibited.  Existing imported C++ is migration debt.
+4. Native C extensions must be subinterpreter-safe where relevant.
+5. Release the GIL around long-running native work when correct and beneficial.
+6. Free-threaded builds may be evaluated with --disable-gil, but measurement and
+   correct synchronization remain required.
+7. New JETOS-owned C++ is prohibited. Imported C++ is migration debt.
 8. Assembly is limited to architecture-required boundaries.
 
 SUBINTERPRETER MODEL
 --------------------
 1. The main JETOS Language interpreter is the OS supervisor/interpreter.
-2. Isolated subinterpreters are the preferred in-process isolation boundary for
-   capability services when they improve ownership, failure separation, or
-   parallelism.
-3. Default granularity is one interpreter per capability/service domain (for
-   example display, network, storage, audio, input, power).
-4. One interpreter per physical device is allowed when measurement or isolation
-   makes that useful; it is not mandatory.
+2. Isolated subinterpreters are the preferred in-process service boundary when
+   they improve ownership, failure separation, or parallelism.
+3. Default granularity is one interpreter per capability/service domain.
+4. One interpreter per physical device is allowed when measurement/isolation
+   justifies it; it is not mandatory.
 5. Use message passing and explicit immutable/copyable data between interpreters.
-   Do not create accidental shared mutable global state.
-6. Subinterpreters are not a security sandbox.  They share a process and native
-   extensions can violate isolation.
-7. Since isolated interpreters have separate GILs in modern CPython, putting
-   service interpreters on separate OS threads can provide multi-core execution.
-8. Any C extension used across service interpreters must explicitly support
-   multiple interpreters rather than assuming process-global Python state.
+6. Subinterpreters are not a security sandbox.
+7. Separate interpreter GILs plus separate OS threads may provide multi-core work.
+8. Native extensions used by service interpreters must support multiple
+   interpreters rather than assuming process-global Python state.
 
 HARDWARE AND CAPABILITIES
 -------------------------
 1. Discover the machine; do not assume a laptop/desktop/server role from shape.
 2. Preserve evidence for each discovered capability.
-3. Distinguish capability exists / implementation installed / policy permits /
-   currently active.
+3. Distinguish exists / implementation installed / policy permits / active.
 4. The desktop/app registry should be generated from discovered capabilities.
 5. Terminal and System diagnostics remain universally available.
-6. Prefer Linux's structured kernel interfaces (/sys, /proc, /dev, netlink,
-   uevents, DRM/KMS, ACPI, Device Tree) over brittle command-output scraping.
+6. Prefer /sys, /proc, /dev, netlink, uevents, DRM/KMS, ACPI, and Device Tree over
+   brittle command-output scraping.
 
 DISPLAY/UI
 ----------
@@ -88,44 +80,56 @@ DISPLAY/UI
 2. The reference desktop uses a Windows-95/98-era interaction/aesthetic language
    without Microsoft code/assets.
 3. Never hard-code a commercial display resolution as a requirement.
-4. Layout must derive from actual display geometry and survive odd/custom sizes.
+4. Layout derives from actual display geometry and survives odd/custom sizes.
 5. Keep layout policy separable from the renderer so geometry is headless-testable.
+
+VISUAL AND VM TEST LEVELS
+-------------------------
+1. Host GUI preview (`python jetos.py gui`) is the fastest renderer/layout test.
+2. Docker+VNC (`python jetos.py gui-docker`) runs the actual Tk desktop in a
+   reproducible Linux container and is the portable visual test for macOS,
+   Windows, and Linux. It is NOT an OS-boot proof.
+3. QEMU (`python jetos.py dev`) is the real guest-kernel/rootfs/PID-1 proof.
+4. QEMU window/VNC modes may expose virtual display hardware, but do not claim the
+   Tk guest desktop is working until the guest display backend actually starts it.
+5. Keep these claims separate in PRs/tests: renderer works, container visual works,
+   VM boots, guest display works, bare metal works.
 
 PERSISTENT STORAGE AND ENCRYPTION
 ---------------------------------
-1. Ordinary persistent JETOS data is encrypted at rest by default.
-2. Do not invent a new file cipher, AEAD construction, key derivation scheme, or
-   Python-level encryption format.  Use reviewed native/kernel cryptography.
-3. The first storage implementation target is transparent whole-volume encryption
-   using Linux device-mapper dm-crypt/LUKS.  Normal open/read/write/mmap APIs stay
-   ordinary; encryption/decryption happens below the filesystem.
-4. Plaintext in RAM is expected while data is actively used.  Kernel page cache,
-   tmpfs/ramfs, interpreter objects, and explicitly designed in-memory caches may
-   contain plaintext.  Do not describe RAM plaintext as persistent encryption
-   failure.
-5. Persistent plaintext is an EXCEPTION, never a secret bypass.  Every exception
-   must have an explicit path/scope, reason, owner, and observable audit evidence.
-6. Never add a hidden attribute, magic filename, undocumented flag, or hard-coded
-   secret that disables encryption.  If a caller requests plaintext persistence,
-   route it only to an explicitly configured plaintext storage domain and record
-   why that domain exists.
-7. The normal boot/firmware-readable partition may be a plaintext exception only
-   for non-secret boot artifacts.  User data, credentials, keys, logs containing
-   secrets, databases, swap, crash data, and application state do not belong there.
-8. Encryption keys must never be committed to Git, embedded in source/images,
-   printed to logs, or exposed through diagnostics.  Key acquisition/unsealing is
-   a separate boot-security boundary (passphrase, TPM/secure hardware, recovery
-   key, or another explicit mechanism).
-9. Encrypted swap is required before swap is enabled.  Hibernation must remain
-   disabled unless its image is protected by the same at-rest security model.
-10. Core dumps, crash dumps, temporary files that may persist, and application
-    caches inherit the encrypted-persistent-storage rule.
-11. Prefer memory-only caches for disposable decrypted data.  Sensitive buffer
-    zeroization in Python is best-effort only; do not claim guarantees CPython
-    cannot provide.  A measured/high-assurance wipe primitive may later be native.
-12. Storage status must be introspectable.  JETOS should be able to classify a
-    path as encrypted, memory-only plaintext, explicit plaintext exception, or
-    unprotected and fail closed for production persistent data.
+1. Ordinary persistent JETOS data defaults to encryption at rest.
+2. The global storage-encryption policy may be explicitly switched ON or OFF.
+   OFF is a visible operator/development policy, never a hidden bypass.
+3. Scoped path/domain overrides may explicitly require encryption or permit
+   plaintext regardless of the global setting. Every override carries scope,
+   reason, owner, and audit evidence.
+4. Changing policy does not itself encrypt/decrypt an existing disk; it changes
+   what JETOS requires and permits for that storage domain.
+5. Do not invent a Python file cipher, AEAD construction, or KDF. Use reviewed
+   native/kernel cryptography; dm-crypt/LUKS is the first implementation target.
+6. Normal open/read/write/mmap APIs remain ordinary; cryptography is below the
+   filesystem.
+7. Plaintext in RAM is expected while data is actively used. Kernel page cache,
+   tmpfs/ramfs/rootfs, interpreter objects, and memory caches may contain it.
+8. Never add a secret attribute, magic filename, undocumented switch, or hard-coded
+   secret that disables encryption.
+9. /boot may be plaintext only for non-secret firmware-readable boot artifacts.
+10. Keys never go in Git, source images, logs, or diagnostics. Key acquisition and
+    recovery are separate boot-security boundaries.
+11. Swap must be encrypted before enabling it; hibernation remains disabled unless
+    its image is protected by the same at-rest model.
+12. Storage status must be introspectable and production policy can fail closed.
+
+IMAGE SIZE
+----------
+1. JETOS must measure rootfs, initramfs, kernel, and major contributors.
+2. The current bootstrap guardrails are 128 MiB uncompressed rootfs and 48 MiB
+   compressed initramfs; these are ceilings, not goals, and should ratchet down.
+3. The lean profile may remove standard-library tests, demos, ensurepip, IDLE, and
+   bytecode caches from the deployed image, while the full development tree stays
+   editable/rebuildable outside the deployed image.
+4. Do not remove runtime functionality blindly. Report largest files/directories,
+   measure before/after, and preserve Tkinter/JETOS runtime requirements.
 
 BOOT AND BUILD
 --------------
@@ -133,7 +137,7 @@ BOOT AND BUILD
 2. Generated kernels, imported upstream trees, root filesystems, and images live
    under .build/ and are not committed as opaque blobs.
 3. Pin upstream inputs exactly.
-4. Docker is an optional reproducible build environment, not JETOS architecture.
+4. Docker is an optional reproducible build/test environment, not JETOS architecture.
 5. QEMU/hypervisors are test computers, not JETOS architecture.
 6. Do not enable destructive bare-metal installation until recovery/storage paths
    are proven and the user explicitly requests it.
@@ -141,9 +145,10 @@ BOOT AND BUILD
 REPOSITORY HYGIENE
 ------------------
 1. Keep source small, readable, inspectable, and deterministic.
-2. README.md remains the single Markdown architecture document; use plain text
-   for special machine/agent policy files such as this one.
+2. README.md remains the single Markdown architecture document; use plain text for
+   special machine/agent policy files such as this one.
 3. No mysterious files, build steps, languages, or generated source blobs.
-4. Run the repository tests before claiming a behavior works.
-5. State execution boundaries honestly: implemented, statically tested,
-   dry-run-tested, VM-boot-tested, and bare-metal-tested are different claims.
+4. Run repository tests before claiming behavior works.
+5. State execution boundaries honestly: implemented, static/unit tested,
+   dry-run-tested, container-visual-tested, VM-boot-tested, and bare-metal-tested
+   are different claims.
