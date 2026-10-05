@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+import sys
 import tempfile
 
-from jetos.storage import (
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+
+from jetos.storage import (  # noqa: E402
     PlaintextException,
     PlaintextMemoryCache,
     StoragePolicy,
