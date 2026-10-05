@@ -17,13 +17,25 @@ def main() -> int:
     assert mode.normalize("skinny") == "skinny"
     assert mode.normalize("full") == "fat"
     assert mode.normalize("lean") == "skinny"
-    assert mode.carries_development_source("fat")
-    assert not mode.carries_development_source("skinny")
+
+    fat = mode.policy("fat")
+    skinny = mode.policy("skinny")
+    assert fat.general_purpose_app_host
+    assert fat.carries_development_source
+    assert fat.carries_kernel_source
+    assert fat.can_derive_skinny_images
+    assert not skinny.general_purpose_app_host
+    assert not skinny.carries_development_source
+    assert not skinny.carries_kernel_source
+    assert not skinny.can_derive_skinny_images
+    assert "target application/capability set" in skinny.application_model
 
     image = (ROOT / "tools/image.py").read_text(encoding="utf-8")
     assert "copy_fat_sources" in image
     assert 'ROOT / "sources" / "cpython"' in image
+    assert 'ROOT / "sources" / "linux"' in image
     assert 'source_root = rootfs / "usr" / "src"' in image
+    assert 'linux_target = source_root / "linux"' in image
 
     dev = (ROOT / "tools/dev.py").read_text(encoding="utf-8")
     assert "mode.CLI_CHOICES" in dev
