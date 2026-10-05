@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Repository policy tests for JETOS-owned Python code."""
+"""Repository policy tests for JETOS-owned Python/native code."""
 from __future__ import annotations
 
 import ast
@@ -17,6 +17,8 @@ FORBIDDEN_TRACKED_NAMES = {
     "poetry.lock",
     "uv.lock",
 }
+CPP_SUFFIXES = {".cc", ".cpp", ".cxx", ".hpp", ".hh"}
+JETOS_OWNED_PREFIXES = ("src/", "tools/")
 
 
 def tracked_files() -> list[Path]:
@@ -74,6 +76,19 @@ def main() -> int:
         raise AssertionError("\n".join(violations))
     checks += len(python_files)
 
+    owned_cpp = sorted(
+        path.relative_to(ROOT).as_posix()
+        for path in files
+        if path.suffix in CPP_SUFFIXES
+        and path.relative_to(ROOT).as_posix().startswith(JETOS_OWNED_PREFIXES)
+    )
+    if owned_cpp:
+        raise AssertionError(
+            "JETOS-owned C++ is forbidden; convert to JETOS Language or C: "
+            + ", ".join(owned_cpp)
+        )
+    checks += 1
+
     docker = (ROOT / "Dockerfile").read_text(encoding="utf-8")
     if not docker.startswith("FROM python:3.14.8-slim\n"):
         raise AssertionError("Docker development Python must be pinned to 3.14.8 stable")
@@ -88,7 +103,8 @@ def main() -> int:
 
     print(
         f"JETOS policy: {checks} checks passed; "
-        f"{len(python_files)} Python files are standard-library/JETOS-only"
+        f"{len(python_files)} Python files are standard-library/JETOS-only; "
+        "JETOS-owned C++: 0"
     )
     return 0
 
