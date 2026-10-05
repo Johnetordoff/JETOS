@@ -209,7 +209,13 @@ def main() -> None:
     os.environ.setdefault("LANG", "C.UTF-8")
     os.environ.setdefault("LC_ALL", "C.UTF-8")
 
-    storage_policy = storage.policy_from_cmdline()
+    boot_storage_mode = os.environ.get("JETOS_BOOT_STORAGE_MODE")
+    if boot_storage_mode is None:
+        storage_policy = storage.policy_from_cmdline()
+    else:
+        storage_policy = storage.default_policy(
+            encryption_enabled=storage.parse_encryption_mode(boot_storage_mode)
+        )
     network_status = network.configure_from_cmdline()
     snapshot = hardware.discover()
     _print_boot_record(snapshot, storage_policy, network_status)
