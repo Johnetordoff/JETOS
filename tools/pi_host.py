@@ -39,6 +39,14 @@ def main() -> int:
             "linux/arm64",
             "-v",
             f"{ROOT}:/jetos",
+            # Keep the ARM64 JETOS Language compiler/runtime artifacts isolated
+            # from any x86-64 dev build already present in the host .build tree.
+            "-v",
+            "jetos_pi_language_src:/jetos/.build/jetos-language-src",
+            "-v",
+            "jetos_pi_language_build:/jetos/.build/jetos-language-build",
+            "-v",
+            "jetos_pi_language_install:/jetos/.build/jetos-language-install",
             "-w",
             "/jetos",
             "jetos:pi",
