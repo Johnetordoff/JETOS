@@ -5,7 +5,12 @@ from __future__ import annotations
 from pathlib import Path
 import tempfile
 
-from jetos.storage import PlaintextException, StoragePolicy, StoragePolicyError
+from jetos.storage import (
+    PlaintextException,
+    PlaintextMemoryCache,
+    StoragePolicy,
+    StoragePolicyError,
+)
 
 
 def write(path: Path, text: str) -> None:
@@ -26,14 +31,19 @@ def main() -> int:
             root / "proc/self/mountinfo",
             "\n".join(
                 [
-                    "20 1 253:0 / / rw,relatime - ext4 /dev/mapper/jetos rw",
+                    # Root is deliberately an LVM/device-mapper layer stacked on
+                    # top of a lower dm-crypt mapping.
+                    "20 1 253:1 / / rw,relatime - ext4 /dev/mapper/jetos-root rw",
                     "21 20 0:5 / /tmp rw,nosuid,nodev - tmpfs tmpfs rw",
                     "22 20 8:1 / /boot rw,relatime - ext4 /dev/vda1 rw",
                     "23 20 8:2 / /plaintext rw,relatime - ext4 /dev/vda2 rw",
+                    "24 20 0:1 / /run/initramfs rw - rootfs rootfs rw",
                 ]
             )
             + "\n",
         )
+        write(root / "sys/dev/block/253:1/dm/uuid", "LVM-deadbeef\n")
+        write(root / "sys/dev/block/253:1/slaves/dm-0/dev", "253:0\n")
         write(
             root / "sys/dev/block/253:0/dm/uuid",
             "CRYPT-LUKS2-deadbeef-jetos\n",
@@ -48,13 +58,22 @@ def main() -> int:
         )
 
         encrypted = policy.inspect("/home/user/file.txt")
-        check(encrypted.encrypted, "root volume should be encrypted")
+        check(encrypted.encrypted, "stacked root volume should be encrypted")
         check(encrypted.disposition == "encrypted", "encrypted disposition")
-        checks += 2
+        check(
+            any("CRYPT-LUKS2" in item for item in encrypted.evidence),
+            "dm-crypt evidence should survive stacked-device traversal",
+        )
+        checks += 3
 
         memory = policy.inspect("/tmp/cache.bin")
         check(not memory.persistent, "tmpfs should be memory-only")
         check(memory.disposition == "memory-plaintext", "memory disposition")
+        checks += 2
+
+        initramfs = policy.inspect("/run/initramfs/state")
+        check(not initramfs.persistent, "rootfs should be memory-only")
+        check(initramfs.disposition == "memory-plaintext", "rootfs disposition")
         checks += 2
 
         boot = policy.inspect("/boot/vmlinuz")
@@ -78,6 +97,13 @@ def main() -> int:
 
         check(policy.require_safe("/home/user/file.txt").encrypted, "encrypted safe path")
         check(not policy.require_safe("/tmp/cache.bin").persistent, "RAM safe path")
+        checks += 2
+
+        cache = PlaintextMemoryCache()
+        cache.put("document", b"secret plaintext")
+        check(cache.get("document") == b"secret plaintext", "memory cache read")
+        cache.drop("document")
+        check(cache.get("document") is None, "memory cache drop")
         checks += 2
 
     print(f"JETOS storage encryption policy: {checks} checks passed")
