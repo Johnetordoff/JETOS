@@ -35,8 +35,6 @@ def main() -> int:
             root / "proc/self/mountinfo",
             "\n".join(
                 [
-                    # Root is deliberately an LVM/device-mapper layer stacked on
-                    # top of a lower dm-crypt mapping.
                     "20 1 253:1 / / rw,relatime - ext4 /dev/mapper/jetos-root rw",
                     "21 20 0:5 / /tmp rw,nosuid,nodev - tmpfs tmpfs rw",
                     "22 20 8:1 / /boot rw,relatime - ext4 /dev/vda1 rw",
@@ -48,10 +46,7 @@ def main() -> int:
         )
         write(root / "sys/dev/block/253:1/dm/uuid", "LVM-deadbeef\n")
         write(root / "sys/dev/block/253:1/slaves/dm-0/dev", "253:0\n")
-        write(
-            root / "sys/dev/block/253:0/dm/uuid",
-            "CRYPT-LUKS2-deadbeef-jetos\n",
-        )
+        write(root / "sys/dev/block/253:0/dm/uuid", "CRYPT-LUKS2-deadbeef-jetos\n")
 
         policy = StoragePolicy(
             root=root,
@@ -64,10 +59,7 @@ def main() -> int:
         encrypted = policy.inspect("/home/user/file.txt")
         check(encrypted.encrypted, "stacked root volume should be encrypted")
         check(encrypted.disposition == "encrypted", "encrypted disposition")
-        check(
-            any("CRYPT-LUKS2" in item for item in encrypted.evidence),
-            "dm-crypt evidence should survive stacked-device traversal",
-        )
+        check(any("CRYPT-LUKS2" in item for item in encrypted.evidence), "dm-crypt evidence")
         checks += 3
 
         memory = policy.inspect("/tmp/cache.bin")
@@ -81,11 +73,11 @@ def main() -> int:
         checks += 2
 
         boot = policy.inspect("/boot/vmlinuz")
-        check(boot.disposition == "plaintext-exception", "boot exception")
+        check(boot.disposition == "plaintext-authorized", "boot exception")
         checks += 1
 
         plain = policy.inspect("/plaintext/export.bin")
-        check(plain.disposition == "plaintext-exception", "explicit plaintext exception")
+        check(plain.disposition == "plaintext-authorized", "explicit plaintext exception")
         checks += 1
 
         strict = StoragePolicy(root=root)
