@@ -3,12 +3,14 @@ from __future__ import annotations
 
 import code
 import ctypes
+import errno
 import os
 from pathlib import Path
 import platform
+import signal
 import sys
 
-from jetos import hardware, storage
+from jetos import hardware, network, storage
 from jetos.interpreters import InterpreterSupervisor, plan_services, supported
 
 
@@ -21,6 +23,10 @@ libc.mount.argtypes = [
     ctypes.c_char_p,
 ]
 libc.mount.restype = ctypes.c_int
+
+
+class RestartUserspace(Exception):
+    """Raised in PID 1 when a validated live-source update requests restart."""
 
 
 def _mount(source: str, target: str, filesystem: str) -> None:
@@ -36,6 +42,8 @@ def _mount(source: str, target: str, filesystem: str) -> None:
         return
 
     error = ctypes.get_errno()
+    if error == errno.EBUSY:
+        return
     if os.getpid() == 1:
         raise OSError(error, f"mount {filesystem} on {target} failed")
 
@@ -55,6 +63,7 @@ def mount_kernel_filesystems() -> None:
 def _print_boot_record(
     snapshot: dict[str, object],
     storage_policy: storage.StoragePolicy,
+    network_status: network.NetworkStatus,
 ) -> None:
     capabilities = snapshot.get("capabilities", {})
     present = []
@@ -81,12 +90,22 @@ def _print_boot_record(
     print("Dunicode: 0.2", flush=True)
     print("Unicode: supported", flush=True)
     print("encoding: UTF-8", flush=True)
-    print("network policy: OFF by default", flush=True)
+    print(
+        "network policy: "
+        + ("ON (explicit boot policy)" if network_status.enabled else "OFF by default"),
+        flush=True,
+    )
+    if network_status.enabled:
+        resolver = ", ".join(network_status.nameservers) or "not supplied by kernel DHCP"
+        print(f"network resolver: {resolver}", flush=True)
     print(
         "persistent storage encryption policy: "
         f"{'ON' if storage_policy.encryption_enabled else 'OFF'}",
         flush=True,
     )
+    repo = os.environ.get("JETOS_REPO")
+    if repo:
+        print(f"live source repository: {repo}", flush=True)
 
 
 def _start_services(
@@ -115,15 +134,20 @@ def _run_console(
     snapshot: dict[str, object],
     supervisor: InterpreterSupervisor | None,
     storage_policy: storage.StoragePolicy,
+    network_status: network.NetworkStatus,
 ) -> None:
     print("session: JETOS Language diagnostic console", flush=True)
-    print("objects: snapshot, hardware, supervisor, storage_policy", flush=True)
+    print(
+        "objects: snapshot, hardware, supervisor, storage_policy, network_status",
+        flush=True,
+    )
     print("", flush=True)
     namespace = {
         "snapshot": snapshot,
         "hardware": hardware,
         "supervisor": supervisor,
         "storage_policy": storage_policy,
+        "network_status": network_status,
     }
     code.interact(
         banner="JETOS Language console",
@@ -141,7 +165,7 @@ def _display_available() -> bool:
 def _run_desktop() -> bool:
     if not _display_available():
         print(
-            "desktop: unavailable (no guest display server/backend yet)",
+            "desktop: unavailable (no local display server/backend yet)",
             flush=True,
         )
         return False
@@ -163,24 +187,53 @@ def _run_desktop() -> bool:
     return True
 
 
+def _restart_handler(signum: int, frame: object) -> None:
+    del signum, frame
+    raise RestartUserspace()
+
+
+def _restart_userspace() -> None:
+    print("JETOS: restarting userspace from live Git source", flush=True)
+    os.execv("/usr/bin/python3", ["/usr/bin/python3", "/init"])
+
+
 def main() -> None:
     mount_kernel_filesystems()
 
-    os.environ["PYTHONPATH"] = "/jetos/src"
+    live_repo = os.environ.get("JETOS_REPO")
+    if live_repo and (Path(live_repo) / "src").is_dir():
+        os.environ["PYTHONPATH"] = f"{live_repo}/src:/jetos/src"
+    else:
+        os.environ["PYTHONPATH"] = "/jetos/src"
     os.environ["PYTHONSTARTUP"] = "/jetos/startup.py"
     os.environ.setdefault("LANG", "C.UTF-8")
     os.environ.setdefault("LC_ALL", "C.UTF-8")
 
-    storage_policy = storage.policy_from_cmdline()
+    boot_storage_mode = os.environ.get("JETOS_BOOT_STORAGE_MODE")
+    if boot_storage_mode is None:
+        storage_policy = storage.policy_from_cmdline()
+    else:
+        storage_policy = storage.default_policy(
+            encryption_enabled=storage.parse_encryption_mode(boot_storage_mode)
+        )
+    network_status = network.configure_from_cmdline()
     snapshot = hardware.discover()
-    _print_boot_record(snapshot, storage_policy)
+    _print_boot_record(snapshot, storage_policy, network_status)
     supervisor = _start_services(snapshot)
+
+    if os.getpid() == 1:
+        signal.signal(signal.SIGHUP, _restart_handler)
 
     try:
         target = os.environ.get("JETOS_BOOT_TARGET", "desktop").lower()
         if target == "desktop":
             _run_desktop()
-        _run_console(snapshot, supervisor, storage_policy)
+        _run_console(snapshot, supervisor, storage_policy, network_status)
+    except RestartUserspace:
+        if supervisor is not None:
+            supervisor.close_all()
+            supervisor = None
+        _restart_userspace()
     finally:
         if supervisor is not None:
             supervisor.close_all()
