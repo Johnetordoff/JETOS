@@ -43,6 +43,7 @@ def tests() -> None:
         "test_interpreters.py",
         "test_storage.py",
         "test_storage_modes.py",
+        "test_sources.py",
     ):
         python_tool(script, [])
 
