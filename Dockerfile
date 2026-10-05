@@ -29,6 +29,8 @@ RUN python tools/test_storage.py
 RUN python tools/test_storage_modes.py
 RUN python tools/test_runtime_image.py
 RUN python tools/test_pi.py
+RUN python tools/metrics.py --strict
+RUN python tools/benchmark.py --iterations 10 --rounds 1 --output .build/benchmark-smoke.json
 RUN python tools/python_release.py check --offline-ok
 
 CMD ["python", "jetos.py", "doctor"]
