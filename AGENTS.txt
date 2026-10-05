@@ -150,7 +150,7 @@ BOOT MEDIA AND INSTALLATION MODEL
 2. The bootable image is the canonical distribution artifact. Optimize it for a
    short, understandable boot path into the JETOS graphical desktop rather than
    requiring a conventional installer before the system can be used.
-3. Installing/bootstraping JETOS onto a machine that currently runs another OS is
+3. Installing/bootstrapping JETOS onto a machine that currently runs another OS is
    a secondary migration/development path, not the default experience.
 4. Migration may support a dedicated target disk, explicit partition/dual-boot
    placement, or full-machine replacement, but every storage-changing operation
