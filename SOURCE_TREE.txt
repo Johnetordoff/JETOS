@@ -1,0 +1,115 @@
+JETOS SOURCE TREE AND TEST MODES
+================================
+
+WHAT THIS REPOSITORY IS TODAY
+-----------------------------
+The small Johnetordoff/JETOS Git repository is JETOS-owned orchestration, policy,
+UI, services, tests, and experiments. It is NOT by itself the complete source of
+every native component required to boot the operating system.
+
+A normal JETOS build also uses large pinned upstream source trees, most importantly:
+
+- CPython 3.14.8 -> patched into JETOS Language;
+- Linux 6.12.96 -> current kernel substrate;
+- GCC source -> toolchain/C++ migration work;
+- Raspberry Pi Linux + firmware -> Pi physical target.
+
+Historically those checkouts were hidden under .build/. That made a source-oriented
+operating system look misleadingly tiny. New work should materialize inspectable
+upstream source under:
+
+    sources/
+
+Compiled objects, root filesystems, initramfs images, disk images, and other
+disposable products stay under:
+
+    .build/
+
+MATERIALIZE THE SOURCE
+----------------------
+To make the currently pinned source trees visible beside JETOS:
+
+    python jetos.py sources sync
+
+Then inspect what is present and what is still missing from source provenance:
+
+    python jetos.py sources status
+
+Count source lines by extension across JETOS plus the materialized upstream trees:
+
+    python jetos.py sources lines
+
+The line census is the correct way to answer questions such as "how much C/C++ is
+actually underneath JETOS?" Counting only files committed directly to the small
+JETOS wrapper repository is not a complete operating-system source census.
+
+SOURCE-COMPLETENESS RULE
+------------------------
+A component may be used before its complete source has been integrated, but that
+must be visible as source debt. JETOS must not call itself source-complete while a
+runtime component is copied only from an opaque/prebuilt host package without a
+pinned source/provenance path.
+
+Known current gaps include libc/dynamic-loader source, Tcl/Tk, X11/display native
+libraries used by the current Tk path, and several native libraries used by enabled
+CPython standard-library extension modules. tools/sources.py reports those gaps.
+
+TEST MODES
+----------
+JETOS has multiple test levels. They are intentionally different claims.
+
+1. FAST UI PREVIEW
+
+       python jetos.py gui
+
+   Runs the JETOS desktop code on the current host Python/Tk stack. Useful for UI,
+   layout, Start menu, terminal, and application behavior. This is not an OS boot.
+
+2. CONTAINER UI PREVIEW
+
+       python jetos.py gui-docker
+
+   Runs the same desktop in a reproducible Linux container and exposes VNC on the
+   local machine. This is still not an OS boot.
+
+3. REAL JETOS VM / COMMAND LINE
+
+       python jetos.py dev --display serial
+
+   Builds the pinned Linux kernel and JETOS Language, constructs the JETOS rootfs,
+   boots it in QEMU, and reaches JETOS Language as PID 1 with its diagnostic CLI.
+
+   A display-capable VM can be requested with:
+
+       python jetos.py dev --display window
+
+   A QEMU window alone does not prove the full JETOS graphical desktop is attached
+   to the guest display backend. That graphics boundary remains a real milestone.
+
+4. RASPBERRY PI PHYSICAL IMAGE
+
+       python tools/pi_host.py --model pi4 --network on
+
+   or:
+
+       python tools/pi_host.py --model pi5 --network on
+
+   Produces a flashable raw SD-card image. This is the first physical-hardware boot
+   target. The first proof is kernel -> JETOS Language PID 1 -> diagnostic console;
+   direct local GUI/framebuffer rendering is the next hardware graphics milestone.
+
+TARGET EXPERIENCE
+-----------------
+The goal is not a collection of Python scripts running on another desktop. The
+normal eventual experience is:
+
+    power on
+      -> firmware/boot handoff
+      -> JETOS-selected kernel
+      -> JETOS Language / CPython runtime
+      -> JETOS OS supervisor
+      -> JETOS command line + graphical desktop
+
+JETOS Language source should be as inspectable and editable as any other operating-
+system source. Native code remains visible substrate, not something the project
+pretends does not exist.
