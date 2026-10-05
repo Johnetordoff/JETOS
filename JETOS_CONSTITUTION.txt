@@ -3,109 +3,101 @@ JETOS NORMATIVE ARCHITECTURE CONSTITUTION
 
 STATUS
 ------
-This document defines the architectural invariants of JETOS. The words MUST,
-MUST NOT, SHOULD, SHOULD NOT, and MAY are normative.
-
-If README.md, AGENTS.txt, implementation notes, build scripts, or historical
-comments conflict with this document, this document governs until it is amended
-by an explicit reviewed change. Those other files may elaborate these rules but
-MUST NOT silently weaken or contradict them.
+This document defines JETOS architectural invariants. MUST, MUST NOT, SHOULD,
+SHOULD NOT, and MAY are normative. README.md, AGENTS.txt, implementation notes,
+and build scripts may elaborate these rules but MUST NOT contradict them.
 
 1. SYSTEM IDENTITY
 ------------------
-1. JETOS is an operating system, not a Python application distribution layered on
-   an otherwise opaque host OS.
+1. JETOS is an operating system, not a Python application distribution on an
+   otherwise opaque host OS.
 2. JETOS Language is a maintained fork of stable CPython and is the normal
-   high-level implementation, control, scripting, service, application, policy,
-   inspection, and interactive language of the system.
-3. Linux is the initial native kernel substrate. JETOS MAY replace or modify
-   native substrates over time, but MUST describe existing boundaries honestly.
-4. JETOS SHOULD move operating-system behavior into JETOS Language whenever that
-   behavior can execute correctly outside irreducible native/firmware boundaries.
+   high-level language for system logic, services, applications, policy,
+   scripting, inspection, and interactive control.
+3. Linux is the initial native kernel substrate. JETOS SHOULD move behavior into
+   JETOS Language whenever it can execute correctly outside irreducible native,
+   kernel, firmware, or hardware boundaries.
+4. The intended boot path is firmware -> JETOS-selected kernel -> JETOS Language
+   supervisor/userspace -> command line and graphical desktop.
 
-2. LINGUA-FRANCA PROGRAMMING MODEL
-----------------------------------
+2. PROGRAMMING MODEL
+--------------------
 1. JETOS has two first-class implementation languages:
-   a. JETOS Language/Python for high-level system logic; and
+   a. JETOS Language/Python for high-level work; and
    b. C for native code, ABIs, hardware/kernel boundaries, and measured hot paths.
-2. The Python C-extension interface SHOULD be the ordinary bridge from JETOS
-   Language into native implementation so high- and low-level work remain in one
-   coherent programming model.
+2. Python C extensions SHOULD be the ordinary bridge between those layers.
 3. New JETOS-owned C++ MUST NOT be introduced. Imported C++ is migration debt and
-   SHOULD be replaced incrementally with readable C or JETOS Language when doing
-   so is technically justified and testable.
+   SHOULD be replaced incrementally with readable C or JETOS Language where that
+   change is technically justified and testable.
 4. Assembly SHOULD be restricted to architecture-required boundaries.
-5. JETOS does not ban executables produced by other languages. Such binaries MAY
-   execute when their ABI, runtime, security policy, and capabilities permit it.
+5. JETOS does not ban binaries produced by other languages. Compatible binaries
+   MAY execute when ABI, runtime, security policy, and capabilities permit it;
    JETOS simply does not promise those languages a first-class development stack.
 6. A developer competent in Python and C SHOULD be able to understand and modify
-   the normal JETOS-owned software stack without learning another implementation
-   language merely to cross an internal layer boundary.
+   the normal JETOS-owned software stack without another implementation language.
 
-3. UPSTREAMS, FORKS, AND CONTINUOUS RECONCILIATION
---------------------------------------------------
-1. JETOS MAY depend on maintained forks of upstream projects rather than rewriting
-   mature components from first principles.
+3. UPSTREAM FORKS AND RECONCILIATION
+------------------------------------
+1. JETOS MAY be composed from maintained forks of mature upstream projects rather
+   than rewriting them from first principles.
 2. Every imported/forked component MUST identify its upstream repository, exact
    pinned revision, local patch set, build provenance, and licensing obligations.
-3. A JETOS fork is not a frozen snapshot. It SHOULD continue to follow the selected
-   maintained upstream line while carrying only the divergence JETOS intentionally
-   requires.
-4. Component update policy is component-specific. In particular, JETOS Language
-   MUST track the newest stable CPython feature/maintenance release; prerelease
-   CPython branches MUST NOT become the normal base.
+3. A JETOS fork is not a frozen snapshot. It SHOULD continuously follow the chosen
+   maintained upstream line while carrying only intentional JETOS divergence.
+4. JETOS Language MUST track the newest stable CPython feature/maintenance release;
+   prerelease CPython branches MUST NOT become the normal base.
 5. Upstream security, correctness, portability, and performance improvements SHOULD
    be incorporated promptly unless they conflict with a deliberate JETOS invariant.
-6. Local patch sets SHOULD remain small, readable, testable, and replayable against
-   newer upstream revisions. Unnecessary divergence is a defect.
-7. Merge conflicts are architectural decisions, not mechanical failures. A conflict
-   MUST be resolved by examining the semantics of both sides. Resolution SHOULD:
-   a. preserve deliberate JETOS invariants;
-   b. preserve compatible upstream fixes and improvements;
-   c. minimize long-term divergence;
-   d. update or add tests for the chosen behavior; and
-   e. record non-obvious rationale where future maintainers would otherwise repeat
-      the same analysis.
-8. JETOS MUST NOT adopt a standing policy of blindly selecting "ours" or "theirs"
-   for upstream merge conflicts. Judgment is required case by case.
-9. When an upstream change makes a JETOS patch unnecessary, the patch SHOULD be
-   removed rather than preserved for historical pride.
+6. Local patches SHOULD remain small, readable, testable, and replayable. When an
+   upstream change makes a patch unnecessary, that patch SHOULD be removed.
+7. Merge conflicts are architectural decisions. Each conflict MUST be resolved by
+   examining both semantics and choosing the result that best preserves deliberate
+   JETOS invariants, compatible upstream improvements, testability, and minimum
+   long-term divergence.
+8. JETOS MUST NOT blindly choose "ours" or "theirs" for upstream conflicts.
+   Judgment is required case by case; non-obvious decisions SHOULD record rationale.
 
-4. SOURCE VISIBILITY AND PROVENANCE
------------------------------------
-1. JETOS MUST distinguish owned source, imported/forked source, and generated build
-   artifacts.
-2. Complete pinned upstream source used for development MUST be materializable in
-   an obvious source tree. Generated binaries, root filesystems, kernels, caches,
-   and images MUST remain separate disposable build output.
-3. Fat Mode MUST carry the editable JETOS source and the exact JETOS Language /
-   CPython source used by the running system so the implementation language is
-   locally inspectable rather than an opaque runtime dependency.
-4. Skinny Mode MAY omit development source, but MUST retain sufficient exact
-   provenance to reproduce it externally.
-5. The long-term provenance target is:
+4. SOURCE VISIBILITY AND KERNEL SOURCE
+--------------------------------------
+1. JETOS MUST distinguish JETOS-owned source, imported/forked source, and generated
+   build artifacts.
+2. Complete pinned upstream source used by a Fat system MUST be materializable and
+   inspectable in an obvious source tree; generated binaries, root filesystems,
+   kernels, caches, and images remain separate disposable build output.
+3. Fat Mode MUST carry the editable JETOS source, the exact JETOS Language/CPython
+   source, and the exact Linux kernel source corresponding to the running system.
+4. Fat Mode SHOULD also retain the kernel configuration, JETOS kernel patches,
+   symbols/debug metadata when available, and build provenance required to map the
+   running kernel back to source and reproduce it.
+5. Having complete kernel source does not imply unrestricted live kernel-memory
+   access. Source visibility and runtime visibility are distinct properties.
+6. Fat Mode SHOULD expose live kernel evidence through supported interfaces such as
+   proc/sys filesystems, device/sysfs state, symbols where permitted, tracepoints,
+   logs, scheduler/process state, mappings, and debug/instrumentation facilities.
+7. JETOS MUST accurately report kernel state that is protected, unavailable, or
+   unobservable in the current architecture/privilege configuration.
+8. Skinny Mode MAY omit development source, but MUST retain exact provenance needed
+   to reproduce the omitted source externally.
+9. The provenance target is:
 
        source -> build rule -> artifact -> installed file -> image
 
-   Unexplained or untraceable operating-system files are defects.
-6. JETOS MUST report source-completeness gaps honestly. Package-provided libc,
-   Tcl/Tk, display libraries, crypto/compression libraries, toolchains, firmware,
-   or similar boundaries MUST NOT be described as JETOS-owned source merely because
-   the build consumes them.
+   Unexplained operating-system files are defects.
+10. Package-provided libc, Tcl/Tk, display libraries, crypto/compression libraries,
+    toolchains, firmware, or similar boundaries MUST be reported as source debt or
+    imported source until their exact source/provenance is incorporated.
 
-5. EXECUTION AND CONCURRENCY
-----------------------------
+5. EXECUTION, SUBINTERPRETERS, AND FREE THREADING
+-------------------------------------------------
 1. The main JETOS Language interpreter is the operating-system supervisor and MAY
    run as PID 1 after kernel/userspace handoff.
-2. Isolated subinterpreters SHOULD be the normal in-process boundary for service or
-   capability domains when they improve ownership, fault separation, or parallelism.
+2. Isolated subinterpreters SHOULD be the normal in-process service/capability
+   boundary when they improve ownership, failure separation, or parallelism.
 3. Services SHOULD communicate through explicit message passing and narrow data
    contracts rather than accidental process-global state.
-4. JETOS architecture MUST NOT depend on one process-wide Global Interpreter Lock
-   for correctness.
+4. JETOS MUST NOT depend on one process-wide Global Interpreter Lock for correctness.
 5. Free-threaded/GIL-disabled JETOS Language builds MUST be treated as a first-class
-   test configuration as CPython/JETOS support becomes correct for required
-   workloads.
+   test configuration as the required runtime and extensions support them correctly.
 6. Native extensions used from multiple interpreters MUST be designed and tested
    for multiple-interpreter safety and correct synchronization.
 7. Performance-sensitive operations SHOULD begin in readable JETOS Language and
@@ -114,153 +106,133 @@ MUST NOT silently weaken or contradict them.
 
 6. LIVE INTROSPECTION AND CONTROL
 ---------------------------------
-1. Fat Mode is intended to make the running operating system inspectable and, where
-   explicitly authorized, modifiable from both JETOS Language and the graphical UI.
-2. Services, interpreters, threads, memory mappings, buffers, devices, queues,
-   files, storage, and capability state SHOULD expose structured APIs rather than
-   existing only as opaque command output.
-3. Memory introspection SHOULD expose address/range, size, ownership, protection,
-   backing object or device, and associated service/interpreter where available.
-4. The graphical inspector SHOULD visualize memory and other system resources
-   geometrically, not only as hexadecimal text.
-5. Where a mapping is writable and JETOS possesses the required authority, an
-   explicit privileged mode MAY mutate individual bytes or bits. Such mutation
-   MUST be opt-in, auditable, and visibly distinct from read-only inspection.
-6. JETOS MUST NOT claim access to protected, unavailable, or physically
-   unobservable state. Hardware, MMU, kernel, privilege, and security boundaries
-   remain real and MUST be represented accurately.
-7. The Python console and graphical inspector SHOULD be two views of the same
-   capability APIs; the GUI SHOULD NOT rely on hidden control paths unavailable to
-   JETOS Language.
+1. Fat Mode MUST be designed as an inspectable operating system. JETOS Language and
+   the graphical UI SHOULD expose structured state for services, interpreters,
+   threads, mappings, buffers, devices, queues, files, storage, and capabilities.
+2. Memory inspection SHOULD expose ranges, sizes, ownership, protections, backing
+   objects/devices, and associated service/interpreter where available.
+3. The graphical inspector SHOULD visualize memory and other resources geometrically,
+   not only as hexadecimal text.
+4. Where a mapping is writable and JETOS has authority, an explicit privileged mode
+   MAY mutate individual bytes or bits. Such mutation MUST be opt-in, auditable,
+   and visibly distinct from read-only inspection.
+5. JETOS MUST NOT claim access to protected, unavailable, or physically unobservable
+   state. Hardware, MMU, kernel, privilege, and security boundaries remain real.
+6. The Python console and graphical inspector SHOULD be two views of the same
+   capability APIs; the GUI SHOULD NOT depend on hidden control paths.
 
 7. USER INTERFACE AND COMMAND LINE
 ----------------------------------
 1. JETOS MUST provide a command-line/interactive JETOS Language control path.
 2. JETOS SHOULD provide a graphical desktop and system-inspection interface.
-3. The reference interaction style is fast, simple, and legible, with a Windows
-   95/98-era interaction vocabulary implemented without Microsoft code or assets.
-4. The long-term UI MAY use HTML/CSS-like document markup because it is easy to
-   author, inspect, theme, and modify.
-5. Local JETOS UI rendering MUST NOT require HTTP, DNS, a remote web server, or the
-   public Internet merely to render the desktop or a local application. A browser-
-   style engine, if used, is local rendering machinery rather than evidence that
-   JETOS is a website.
-6. UI layout MUST derive from actual display geometry rather than a hard-coded
-   commercial resolution.
+3. The reference interaction style is fast, simple, and legible, using a Windows
+   95/98-era interaction vocabulary without Microsoft code/assets.
+4. The long-term UI MAY use HTML/CSS-like document markup for authorability and
+   theming, but local rendering MUST NOT require HTTP, DNS, a remote web server, or
+   the public Internet merely to display the desktop or a local application.
+5. A browser-style renderer, if used, is local OS display machinery rather than a
+   claim that JETOS is a website.
+6. UI layout MUST derive from actual display geometry rather than a fixed resolution.
 
 8. FAT MODE AND SKINNY MODE
 ---------------------------
-1. Fat Mode and Skinny Mode are packaging personalities of the same operating
-   system and MUST expose the same public JETOS semantics and capability model.
-2. Fat Mode is the personal-computer/developer personality. It SHOULD carry source,
-   tests, development tools, inspection surfaces, and enough native build support
-   for in-place system development.
-3. Skinny Mode is the device/runtime personality. It MAY remove source trees,
-   tests, demos, compilers, caches, and other development-only payloads while
-   retaining the required JETOS Language runtime, native runtime, diagnostics, and
-   reproducible source provenance.
-4. Fat Mode MAY be used in production when live development or deep inspection is
+1. Fat Mode and Skinny Mode are deployment profiles of the SAME JETOS version and
+   source lineage, not separate editions or forks of JETOS.
+2. Fat Mode is the general-purpose personal-computer/developer profile. It SHOULD
+   carry source, tests, compilers/build tools, inspection surfaces, and enough native
+   development support for in-place operating-system development.
+3. Fat Mode is a general-purpose application host: it SHOULD be able to run any
+   application compatible with its ABI, available runtimes, capabilities, and
+   security policy rather than being restricted to a fixed appliance application set.
+4. Skinny Mode is the target/device/application profile. It MAY remove source trees,
+   compilers, tests, demos, caches, and general-purpose development facilities.
+5. A Skinny image SHOULD declare the applications and capabilities it is intended to
+   run. It need not support arbitrary application installation/execution beyond that
+   target set.
+6. Fat Mode MUST be able to derive, build, and program/flash Skinny images from its
+   own source tree. Designing on Fat and deploying a target-specific Skinny image is
+   a normal JETOS workflow.
+7. A Skinny image derived from Fat MUST preserve the JETOS release/version identity,
+   source revision/provenance, public runtime semantics, and capability model of the
+   source Fat system; only packaging, included source/tooling, enabled capabilities,
+   target applications, and hardware-specific artifacts may differ.
+8. Fat Mode MAY be used in production when live development or deep inspection is
    desired. "Production" and "Skinny" are not synonyms.
-5. Image size MUST be measured in both modes. Skinny Mode SHOULD enforce strict
-   size budgets; Fat Mode SHOULD optimize size without deleting its defining
-   development/introspection payload.
-6. The canonical names are "fat" and "skinny". "full" and "lean" MAY remain only
-   as compatibility aliases during migration.
+9. Image size MUST be measured in both profiles. Skinny SHOULD enforce strict size
+   budgets; Fat SHOULD optimize size without deleting its defining source/tooling.
+10. The canonical names are "fat" and "skinny". "full" and "lean" MAY remain only
+    as compatibility aliases during migration.
 
 9. BOOT, DISTRIBUTION, AND INSTALLATION
 ---------------------------------------
 1. The canonical JETOS product artifact is a directly bootable image.
-2. The normal user path is preloaded or preflashed media: power on -> firmware ->
-   JETOS-selected kernel -> JETOS Language/userspace -> CLI and graphical desktop.
-   A conventional installation step is not required in this path.
-3. USB media, flash storage, dedicated disks, virtual disks, and Raspberry Pi SD
-   cards MAY carry the canonical image.
+2. The normal path is preloaded/preflashed media: power on -> JETOS. A conventional
+   installer is not required for this path.
+3. USB/flash media, dedicated disks, virtual disks, and Raspberry Pi SD cards MAY
+   carry the image.
 4. Installing JETOS onto a machine already running another OS is a secondary
    migration/development path.
 5. JETOS MUST NOT silently repartition, format, overwrite, or replace an existing
    operating system. Storage-changing migration MUST be previewable and explicitly
    authorized for the selected target.
-6. Full-machine replacement is the most aggressive installation mode and MUST
-   require proven recovery/storage behavior plus an explicit request.
-7. Docker, QEMU, VMs, host previews, and similar environments are development/test
+6. Full-machine replacement MUST require proven recovery/storage behavior plus an
+   explicit request.
+7. Docker, QEMU, VMs, host previews, and similar systems are development/test
    mechanisms, not the architectural identity of JETOS.
 
-10. STORAGE, FILESYSTEMS, AND CAPABILITIES
------------------------------------------
+10. STORAGE, CAPABILITIES, AND HOST BOUNDARIES
+----------------------------------------------
 1. ext4, FAT, tmpfs, and other filesystems are implementations, not JETOS identity.
-   JETOS-owned code SHOULD express required storage semantics through narrow
-   interfaces so targets can select appropriate implementations.
-2. A constrained target MAY omit or substitute capabilities when the resulting
-   capability loss is explicit.
-3. Ordinary persistent JETOS data SHOULD default to encryption at rest using
-   reviewed native/kernel mechanisms rather than an invented Python cipher format.
-4. Encryption policy and actual on-disk encryption MUST be reported separately;
-   JETOS MUST NOT claim storage is encrypted when it is not.
-5. Hardware and services SHOULD be discovered as explicit capabilities with
-   evidence, implementation availability, policy permission, and active state.
+   JETOS SHOULD express required storage semantics through narrow interfaces.
+2. Constrained targets MAY omit/substitute capabilities when the loss is explicit.
+3. Persistent JETOS data SHOULD default to encryption at rest using reviewed native
+   or kernel mechanisms; JETOS MUST NOT claim encryption when it is not present.
+4. Hardware/services SHOULD be represented as explicit capabilities with evidence,
+   implementation availability, policy permission, and active state.
+5. Networking is a capability boundary independent of the local UI; JETOS SHOULD
+   support configurations where networking is physically or verifiably off.
+6. JETOS MUST NOT require jailbreaking iPhone/iPad or bypassing host security.
+7. When JETOS coexists with another local system such as MacBrain, interaction
+   SHOULD use explicit local/network/versioned-artifact interfaces rather than
+   silently rewriting the other system's live root.
 
-11. NETWORK AND HOST-PLATFORM BOUNDARIES
-----------------------------------------
-1. Networking is a capability and policy boundary independent of the local UI.
-2. JETOS SHOULD support configurations in which networking is physically or
-   software-verifiably absent/off.
-3. JETOS MUST NOT require jailbreaking iPhone/iPad or bypassing host platform
-   security. Apple-mobile experiments MUST remain inside supported app,
-   emulation, VM, container-like, or other ordinary platform boundaries.
-4. When JETOS coexists with another local system such as MacBrain, cross-system
-   interaction SHOULD use explicit local/network/versioned-artifact interfaces
-   rather than silently rewriting the other system's live root.
-
-12. GIT AND LIVE DEVELOPMENT
+11. GIT AND LIVE DEVELOPMENT
 ----------------------------
-1. Git is the authoritative history of JETOS-owned source and SHOULD remain a
-   first-class development mechanism on Fat Mode systems.
-2. A running JETOS system MAY update userspace from a Git checkout when the update
-   path validates cleanliness, fetches an intended revision, rejects unsafe history
-   changes by default, runs relevant tests, and restarts/reloads only after
-   validation.
-3. Userspace source updates MUST NOT be represented as equivalent to hot-swapping
-   firmware, partition layout, kernel, or other pre-userspace components that
-   require rebuild/reboot/reflash.
+1. Git is the authoritative history of JETOS-owned source and SHOULD be a first-class
+   Fat Mode development mechanism.
+2. Running JETOS MAY update userspace from Git only through a path that validates
+   cleanliness, fetches the intended revision, rejects unsafe history changes by
+   default, runs relevant tests, and reloads/restarts only after validation.
+3. Userspace Git updates MUST NOT be represented as equivalent to replacing
+   firmware, partition layout, kernel, or other pre-userspace components requiring
+   rebuild/reboot/reflash.
 
-13. TESTING AND EVIDENCE
-------------------------
+12. TESTING, SMALLNESS, AND BENCHMARKING
+---------------------------------------
 1. JETOS MUST distinguish implementation from proof. Source review, unit tests,
-   host GUI preview, container visual tests, VM boot, guest graphical boot, and bare-
-   metal boot are different evidence levels and MUST NOT be conflated.
-2. The supported test ladder SHOULD include at least:
-   a. host UI preview;
-   b. reproducible container UI preview;
-   c. VM serial boot to JETOS Language/PID 1;
-   d. VM display-hardware/graphical integration;
-   e. physical Raspberry Pi boot; and
-   f. additional bare-metal targets as support matures.
-3. A claim that something works MUST identify the strongest environment in which it
-   has actually been executed successfully.
-4. Free-threaded, subinterpreter, storage-policy, image-size, source-provenance, and
-   architecture-specific behavior SHOULD have repeatable tests.
-
-14. SMALLNESS, TYPES, AND BENCHMARKING
--------------------------------------
-1. Smallness is an operating-system feature. JETOS SHOULD minimize source lines,
-   concepts, duplicated representations, boot work, runtime dependencies, and image
-   size without sacrificing clarity or correctness.
-2. Code golf is not a goal. Clear names, explicit types, dataclasses/structured
-   records, narrow interfaces, and readable control flow are preferred over fewer
-   characters.
-3. Python type annotations SHOULD be used where they materially improve static
-   understanding and interface precision.
-4. Performance decisions MUST be benchmark-informed. Comparable before/after
+   host GUI preview, container visual tests, VM boot, guest graphical boot, and
+   bare-metal boot are distinct evidence levels and MUST NOT be conflated.
+2. A claim that something works MUST identify the strongest environment in which it
+   has actually executed successfully.
+3. Repeatable tests SHOULD cover free-threading, subinterpreters, storage policy,
+   source provenance, image size, architecture-specific behavior, Fat-to-Skinny
+   derivation, and application/capability restrictions.
+4. Smallness is an operating-system feature. JETOS SHOULD minimize source lines,
+   duplicated concepts, boot work, runtime dependencies, and image size without
+   sacrificing clarity or correctness.
+5. Code golf is not a goal. Explicit types, clear names, dataclasses/structured
+   records, narrow interfaces, and readable control flow are preferred.
+6. Performance decisions MUST be benchmark-informed. Comparable before/after
    measurements SHOULD precede moving work to C or increasing native complexity.
-5. The project SHOULD continuously measure source-language composition, annotation
+7. JETOS SHOULD continuously measure source-language composition, annotation
    coverage, image size, boot/runtime performance, and remaining C++ migration debt.
 
-15. CHANGE GOVERNANCE
+13. CHANGE GOVERNANCE
 ---------------------
-1. Architecture changes SHOULD be expressed as explicit reviewed changes to this
-   constitution or to a subordinate specification that cites the governing rule.
+1. Architecture changes SHOULD be explicit reviewed changes to this constitution or
+   a subordinate specification that cites its governing rule.
 2. Implementations MAY evolve aggressively; invariants SHOULD change deliberately.
-3. When reality contradicts this document, maintainers MUST either fix the
-   implementation or amend the constitution. Silent drift is not acceptable.
-4. JETOS values inspectability, reproducibility, explicit authority, and deliberate
-   engineering judgment over hidden automation or accidental complexity.
+3. When reality contradicts this document, maintainers MUST fix the implementation
+   or amend the constitution. Silent drift is not acceptable.
+4. JETOS prioritizes inspectability, reproducibility, explicit authority, and
+   deliberate engineering judgment over hidden automation or accidental complexity.
