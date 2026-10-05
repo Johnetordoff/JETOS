@@ -31,6 +31,7 @@ def tests() -> None:
         "test_desktop.py",
         "test_policy.py",
         "test_interpreters.py",
+        "test_storage.py",
     ):
         python_tool(script, [])
 
@@ -153,6 +154,17 @@ def main() -> int:
         help="actually start and ping planned services (requires Python 3.14+)",
     )
 
+    storage = sub.add_parser(
+        "storage",
+        help="inspect JETOS transparent persistent-storage encryption state",
+    )
+    storage.add_argument("paths", nargs="*", default=["/", "/boot", "/tmp"])
+    storage.add_argument(
+        "--strict",
+        action="store_true",
+        help="fail if any requested persistent path is neither encrypted nor an explicit exception",
+    )
+
     dev = sub.add_parser(
         "dev",
         help="build and boot JETOS in its portable Docker/QEMU development environment",
@@ -193,6 +205,14 @@ def main() -> int:
         python_tool("python_release.py", ["check"])
     elif args.command == "interpreters":
         return interpreter_diagnostics(args.per_device, args.run)
+    elif args.command == "storage":
+        forwarded = [*args.paths]
+        if args.strict:
+            forwarded.append("--strict")
+        return run(
+            [sys.executable, str(ROOT / "tools/storage_status.py"), *forwarded],
+            check=False,
+        ).returncode
     elif args.command == "dev":
         if args.native:
             python_tool("dev.py", ["build" if args.build_only else "run"])
