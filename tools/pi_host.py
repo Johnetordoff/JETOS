@@ -6,8 +6,13 @@ import argparse
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+
+from jetos import mode  # noqa: E402
+
 BUILD = ROOT / ".build"
 
 
@@ -16,10 +21,21 @@ def run(args: list[str]) -> None:
     subprocess.run(args, cwd=ROOT, check=True, text=True)
 
 
+def pi_legacy_profile(value: str) -> str:
+    """Translate canonical mode names for the current Pi image builder."""
+    canonical = mode.normalize(value)
+    return "full" if canonical == mode.FAT else "lean"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Build a flashable Raspberry Pi JETOS image")
     parser.add_argument("--model", choices=("pi4", "pi5"), default="pi4")
-    parser.add_argument("--profile", choices=("lean", "full"), default="lean")
+    parser.add_argument(
+        "--profile",
+        choices=mode.CLI_CHOICES,
+        default=mode.SKINNY,
+        help="fat=developer/PC; skinny=device/runtime (full/lean are legacy aliases)",
+    )
     parser.add_argument("--network", choices=("on", "off"), default="off")
     parser.add_argument("--size-mib", type=int, default=1024)
     args = parser.parse_args()
@@ -56,7 +72,7 @@ def main() -> int:
             "--model",
             args.model,
             "--profile",
-            args.profile,
+            pi_legacy_profile(args.profile),
             "--network",
             args.network,
             "--size-mib",
@@ -65,6 +81,7 @@ def main() -> int:
     )
     output = BUILD / f"jetos-{args.model}.img"
     print(f"\nJETOS image ready for flashing: {output}")
+    print(f"JETOS mode: {mode.normalize(args.profile)}")
     return 0
 
 
