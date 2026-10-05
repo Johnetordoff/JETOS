@@ -186,3 +186,85 @@ REPOSITORY HYGIENE
 5. State execution boundaries honestly: implemented, static/unit tested,
    dry-run-tested, container-visual-tested, VM-boot-tested, and bare-metal-tested
    are different claims.
+
+LINGUA FRANCA PROGRAMMING MODEL
+-------------------------------
+1. JETOS is intentionally a two-language operating-system development environment:
+   JETOS Language/Python for orchestration, services, scripting, applications,
+   inspection, policy, and interactive control; C for native implementation,
+   hardware/kernel/ABI boundaries, and measured hot primitives.
+2. The C extension interface is the standard bridge between those layers. Prefer a
+   Python-facing API over inventing a second control language when native work is
+   required.
+3. This is not a ban on executing binaries produced by other languages. If the ABI,
+   capability policy, and available runtime permit a binary to run, JETOS may run
+   it. JETOS simply does not promise every language its own first-class development
+   ecosystem.
+4. A person who knows Python and C should be able to understand and modify the
+   normal JETOS-owned software stack without learning an additional implementation
+   language merely to cross a layer boundary.
+5. Carry the exact JETOS Language/CPython source as a normal part of Fat Mode so the
+   implementation language itself is locally inspectable and editable, not a black
+   box dependency fetched only when something breaks.
+6. Keep updating the JETOS Language fork to the newest stable CPython base while
+   preserving the JETOS patch set as small, reviewable operating-system source.
+7. Free-threaded/GIL-disabled builds are a first-class required test configuration
+   as they become correct for JETOS workloads. Architecture must not depend on one
+   process-wide GIL for correctness.
+8. Prefer subinterpreters and explicit message passing for service isolation and
+   parallel work; native extensions used there must be multiple-interpreter safe.
+
+LIVE INTROSPECTION AND CONTROL
+------------------------------
+1. Fat Mode is intended to make the running operating system inspectable from both
+   JETOS Language and the graphical UI. Running services, interpreters, threads,
+   mappings, buffers, devices, queues, files, storage and capability state should
+   expose structured introspection rather than opaque command output.
+2. A JETOS Language console should be able to query and, where a capability permits,
+   deliberately modify live operating-system state through explicit APIs. The goal
+   is one coherent control context from high-level services down to native state.
+3. Memory introspection should expose address ranges, sizes, ownership, protection,
+   backing object/device, interpreter/service association and other available
+   evidence. The UI should be able to visualize those ranges geometrically so a
+   user can navigate memory rather than reading only hexadecimal tables.
+4. Privileged write mode may expose deliberate byte- and bit-level mutation where
+   the kernel/hardware mapping is writable and JETOS has the required authority.
+   Such writes must be explicit, auditable and visually distinguished from read-only
+   inspection; do not silently bypass page protections, hardware rules or security
+   boundaries merely to satisfy an inspector.
+5. A UI memory editor and a Python memory API are two views of the same underlying
+   capability model. Do not create a GUI-only hidden path that cannot be inspected
+   or reproduced from JETOS Language.
+6. Introspection is not a license to claim impossible visibility. Report when an
+   address, physical page, device register, kernel object or external process is not
+   observable or writable in the current privilege/hardware environment.
+7. Build instrumentation so costly introspection can be disabled or reduced in
+   Skinny Mode without changing the public semantics of the operating system.
+
+FAT MODE AND SKINNY MODE
+------------------------
+1. The canonical deployment personalities are Fat Mode and Skinny Mode. They are
+   two packages of the same JETOS architecture, not separate operating systems.
+2. Fat Mode is the personal-computer/developer personality. It carries editable
+   JETOS-owned source plus the exact JETOS Language/CPython source, tests,
+   documentation needed for development, inspection surfaces and development tools.
+   Personal computers are the primary target for full in-place JETOS development.
+3. Fat Mode is allowed to be materially larger. Size is still measured, but Skinny
+   image ceilings must not force removal of the source/introspection payload that
+   defines Fat Mode.
+4. Skinny Mode is the device/runtime personality. It may remove source trees,
+   compiler/build helpers, tests, demos, caches and other development-only payload
+   when they are not required for the device role.
+5. Skinny Mode must retain the JETOS Language runtime, required C/native runtime,
+   runtime APIs, diagnostics appropriate to the device, and enough pinned
+   provenance to reproduce the exact omitted source externally.
+6. Fat and Skinny must use the same public JETOS APIs and capability model. Do not
+   fork behavior merely because one image carries development source and the other
+   does not.
+7. `fat` and `skinny` are the canonical CLI/profile spellings. `full` and `lean`
+   may remain temporary compatibility aliases mapping to Fat and Skinny
+   respectively; new documentation and interfaces should use Fat/Skinny.
+8. A production deployment may intentionally use Fat Mode when live development and
+   inspection are desired. "Production" does not automatically mean Skinny; the
+   distinction is source/tooling/introspection payload, not whether the machine is
+   considered important.
