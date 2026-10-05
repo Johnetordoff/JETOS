@@ -49,6 +49,18 @@ This deliberately makes the repository the persistent source of the running
 JETOS userspace instead of baking every JETOS Python change permanently into
 the boot partition.
 
+FIRST-PROTOTYPE STORAGE POLICY
+------------------------------
+The first Raspberry Pi physical prototype intentionally uses plain ext4 for the
+JETOS_STATE partition. The bootstrap makes that development choice visible to
+JETOS by setting its physical-boot storage policy to encryption OFF. It must not
+pretend this partition is protected by dm-crypt/LUKS when it is not.
+
+Do not put secrets on this prototype state partition. Encrypted persistent Pi
+state is a later storage milestone and should use the same reviewed dm-crypt/LUKS
+model already selected by JETOS rather than inventing a new Python encryption
+format.
+
 LIVE UPDATE MODEL
 -----------------
 When networking is explicitly enabled and repository credentials are available,
@@ -83,6 +95,10 @@ The first implementation uses kernel DHCP/IP autoconfiguration and is aimed at
 wired Ethernet. It does not embed GitHub tokens, SSH private keys, Wi-Fi passwords,
 or other credentials in the image. A private Git remote therefore still needs a
 credential supplied separately on the running machine.
+
+The embedded first-prototype Git runtime is HTTPS-first. If the source checkout's
+origin is an SSH-style remote, change /state/jetos's origin to an HTTPS remote
+before using live update, or add an SSH client as a later explicit capability.
 
 FIRST PHYSICAL PROOF
 --------------------
