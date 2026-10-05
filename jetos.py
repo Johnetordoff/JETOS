@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One-command entry point for developing and booting JETOS."""
+"""One-command entry point for developing, inspecting, and booting JETOS."""
 from __future__ import annotations
 
 import argparse
@@ -172,6 +172,36 @@ def interpreter_diagnostics(per_device: bool, run_services: bool) -> int:
     )
 
 
+def print_modes() -> None:
+    print(
+        """JETOS test modes
+
+1. Fast host UI preview
+   python jetos.py gui
+
+2. Reproducible container UI preview
+   python jetos.py gui-docker
+
+3. Real JETOS VM / command line (kernel + JETOS Language PID 1)
+   python jetos.py dev --display serial
+
+4. VM with a display device
+   python jetos.py dev --display window
+   (display hardware is not yet proof that the JETOS desktop is wired to it)
+
+5. Raspberry Pi flash image
+   python tools/pi_host.py --model pi4 --network on
+
+6. Materialize and inspect the real upstream source trees
+   python jetos.py sources sync
+   python jetos.py sources status
+   python jetos.py sources lines
+
+See SOURCE_TREE.txt for the exact claims and current source-completeness gaps.
+"""
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="JETOS development/test entry point")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -184,7 +214,16 @@ def main() -> int:
 
     sub.add_parser("test", help="run JETOS repository tests")
     sub.add_parser("language-check", help="check latest-stable Python pin")
-    sub.add_parser("text", help="print every tracked UTF-8 JETOS file")
+    sub.add_parser("text", help="print every tracked UTF-8 JETOS-owned file")
+    sub.add_parser("modes", help="show the supported UI/VM/Pi/source test modes")
+
+    sources = sub.add_parser("sources", help="materialize/inspect complete upstream source trees")
+    source_sub = sources.add_subparsers(dest="sources_command", required=True)
+    source_sync = source_sub.add_parser("sync", help="clone pinned upstream source into sources/")
+    source_sync.add_argument("components", nargs="*")
+    source_sub.add_parser("status", help="show present source trees and source-completeness gaps")
+    source_lines = source_sub.add_parser("lines", help="count source lines by extension")
+    source_lines.add_argument("--json", action="store_true")
 
     interpreters = sub.add_parser("interpreters", help="show/run service interpreters")
     interpreters.add_argument("--per-device", action="store_true")
@@ -237,6 +276,15 @@ def main() -> int:
         python_tool("python_release.py", ["check"])
     elif args.command == "text":
         print_all_text()
+    elif args.command == "modes":
+        print_modes()
+    elif args.command == "sources":
+        forwarded = [args.sources_command]
+        if args.sources_command == "sync":
+            forwarded.extend(args.components)
+        elif args.sources_command == "lines" and args.json:
+            forwarded.append("--json")
+        python_tool("sources.py", forwarded)
     elif args.command == "interpreters":
         return interpreter_diagnostics(args.per_device, args.run)
     elif args.command == "gui":
