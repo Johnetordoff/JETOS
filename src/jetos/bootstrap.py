@@ -88,6 +88,10 @@ def main() -> None:
         sys.path.insert(0, str(repo / "src"))
         os.environ["JETOS_REPO"] = str(repo)
         os.environ["JETOS_STATE"] = str(state)
+        # The first Pi physical prototype intentionally uses a plain ext4 state
+        # partition. Make that development choice visible to storage policy rather
+        # than falsely reporting the normal encryption-required mode.
+        os.environ.setdefault("JETOS_BOOT_STORAGE_MODE", "off")
     else:
         sys.path.insert(0, "/jetos/src")
         os.environ.setdefault("JETOS_REPO", "/jetos")
