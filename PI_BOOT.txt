@@ -1,0 +1,101 @@
+JETOS RASPBERRY PI PHYSICAL-BOOT TARGET
+=======================================
+
+PURPOSE
+-------
+The Raspberry Pi is the first practical physical-hardware target for seeing JETOS
+boot as an operating system rather than as a host preview, Docker container, or
+QEMU guest.
+
+BUILD
+-----
+From macOS, Windows, or Linux with Docker:
+
+    python tools/pi_host.py --model pi4
+
+or:
+
+    python tools/pi_host.py --model pi5
+
+To build a card that explicitly enables wired-network boot configuration for
+Git updates:
+
+    python tools/pi_host.py --model pi4 --network on
+
+The output is:
+
+    .build/jetos-pi4.img
+
+or:
+
+    .build/jetos-pi5.img
+
+Flash that raw image to an SD card with a raw-image writer such as Raspberry Pi
+Imager's custom-image path. Flashing overwrites the selected card; the image
+builder itself never selects or writes a physical disk.
+
+IMAGE LAYOUT
+------------
+Partition 1 is a FAT boot partition containing pinned Raspberry Pi firmware,
+a JETOS-selected Raspberry Pi Linux kernel/DTB, and the JETOS initramfs.
+
+Partition 2 is an ext4 JETOS_STATE partition. It contains a real Git checkout of
+this JETOS repository at /jetos. The tiny initramfs bootstrap mounts the state
+partition at /state and then runs JETOS-owned userspace from:
+
+    /state/jetos/src
+
+This deliberately makes the repository the persistent source of the running
+JETOS userspace instead of baking every JETOS Python change permanently into
+the boot partition.
+
+LIVE UPDATE MODEL
+-----------------
+When networking is explicitly enabled and repository credentials are available,
+the running machine can update its persistent checkout with:
+
+    python -m jetos.update --restart
+
+The updater:
+
+1. refuses to proceed over uncommitted local changes;
+2. fetches the current branch from its configured Git remote;
+3. accepts only a fast-forward update;
+4. runs the JETOS repository tests by default;
+5. rolls back to the previous commit if validation fails;
+6. sends PID 1 a userspace-restart request only after validation passes.
+
+The restart re-executes the tiny bootstrap and imports JETOS from the updated
+persistent checkout. This is a userspace restart, not a kernel reboot.
+
+BOUNDARY
+--------
+JETOS-owned Python, UI, policy, services, and other userspace source can use this
+live Git path. Kernel, device-tree, Raspberry Pi firmware, partition layout, and
+other pre-userspace/native boot changes still require rebuilding the image and
+rebooting (and sometimes reflashing). Git source control does not make those
+physical boot boundaries disappear.
+
+NETWORK POLICY
+--------------
+Networking remains OFF by default. --network on is an explicit image-build choice.
+The first implementation uses kernel DHCP/IP autoconfiguration and is aimed at
+wired Ethernet. It does not embed GitHub tokens, SSH private keys, Wi-Fi passwords,
+or other credentials in the image. A private Git remote therefore still needs a
+credential supplied separately on the running machine.
+
+FIRST PHYSICAL PROOF
+--------------------
+The first physical proof is intentionally modest and falsifiable:
+
+- Raspberry Pi firmware loads the selected JETOS kernel and initramfs;
+- CPython/JETOS Language becomes PID 1 userspace;
+- the persistent Git state partition mounts;
+- JETOS prints its boot/capability record and reaches its diagnostic console;
+- optional wired networking can support a Git fetch/update.
+
+The Tkinter desktop code is present, but local Raspberry Pi graphical display is
+not yet claimed as complete. Tk on Linux still needs a working local display-server
+or replacement renderer boundary. Until that is implemented and tested, HDMI text
+console boot is the physical proof and the Windows-95-style desktop remains a
+separate graphics milestone.
