@@ -31,6 +31,7 @@ RUN python tools/test_runtime_image.py
 RUN python tools/test_pi.py
 RUN python tools/test_sources.py
 RUN python tools/test_modes.py
+RUN python tools/test_constitution.py
 RUN python tools/python_release.py check --offline-ok
 
 CMD ["python", "jetos.py", "doctor"]
