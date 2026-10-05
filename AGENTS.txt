@@ -82,6 +82,16 @@ DISPLAY/UI
 3. Never hard-code a commercial display resolution as a requirement.
 4. Layout derives from actual display geometry and survives odd/custom sizes.
 5. Keep layout policy separable from the renderer so geometry is headless-testable.
+6. The long-term desktop/application UI may use HTML/CSS-like document markup as
+   its interface description language so UI structure is easy to author, inspect,
+   theme, and modify.
+7. Core JETOS UI markup is rendered locally by the operating-system UI/runtime.
+   It must not require ordinary HTTP requests, a remote web server, DNS, or an
+   Internet connection merely to draw the desktop or a local application.
+8. A browser-style rendering engine may be embedded or adapted as native/local
+   display machinery. Treat the renderer as an OS component receiving local
+   documents/state, not as evidence that JETOS itself is merely a web site.
+9. Networking remains a separate capability and policy boundary from local UI.
 
 VISUAL AND VM TEST LEVELS
 -------------------------
@@ -130,6 +140,30 @@ IMAGE SIZE
    editable/rebuildable outside the deployed image.
 4. Do not remove runtime functionality blindly. Report largest files/directories,
    measure before/after, and preserve Tkinter/JETOS runtime requirements.
+
+BOOT MEDIA AND INSTALLATION MODEL
+---------------------------------
+1. The normal JETOS product path is a machine or storage device already containing
+   a bootable JETOS image: preloaded hardware, a preflashed disk, USB/flash media,
+   or another directly bootable image. In that path there is no installation step;
+   power-on should enter JETOS directly.
+2. The bootable image is the canonical distribution artifact. Optimize it for a
+   short, understandable boot path into the JETOS graphical desktop rather than
+   requiring a conventional installer before the system can be used.
+3. Installing/bootstrapping JETOS onto a machine that currently runs another OS is
+   a secondary migration/development path, not the default experience.
+4. Migration may support a dedicated target disk, explicit partition/dual-boot
+   placement, or full-machine replacement, but every storage-changing operation
+   must be deliberate, previewable, and explicitly approved by the user.
+5. Never silently repartition, format, overwrite, or replace an existing operating
+   system. Full replacement is the most aggressive mode and requires proven
+   recovery/storage support plus an explicit request for that exact action.
+6. Development hosts may continue to use Docker, VMs, QEMU, host GUI previews, or
+   other non-destructive bootstrap environments without confusing those paths with
+   the normal shipped/booted JETOS experience.
+7. A preflashed image and an installed image should converge on the same runtime
+   architecture, policies, desktop, and update model; installation is a way to put
+   JETOS onto storage, not a different edition of the operating system.
 
 BOOT AND BUILD
 --------------
