@@ -10,6 +10,9 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT / "src"))
+
+from jetos import mode  # noqa: E402
 
 
 def run(args: list[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -44,6 +47,7 @@ def tests() -> None:
         "test_storage.py",
         "test_storage_modes.py",
         "test_sources.py",
+        "test_modes.py",
     ):
         python_tool(script, [])
 
@@ -175,7 +179,21 @@ def interpreter_diagnostics(per_device: bool, run_services: bool) -> int:
 
 def print_modes() -> None:
     print(
-        """JETOS test modes
+        """JETOS canonical deployment modes
+
+Fat Mode
+  Personal-computer/developer personality. Carries editable JETOS source and the
+  JETOS Language/CPython source with the running machine, plus tests, inspection
+  surfaces, and development tools. This is the mode for deep live introspection.
+
+Skinny Mode
+  Device/runtime personality. Development-only source, tests, and tooling may be
+  stripped, but the same JETOS runtime APIs, diagnostics, and reproducible source
+  provenance remain. Skinny is not a different operating system.
+
+Compatibility aliases: full -> fat, lean -> skinny.
+
+JETOS test paths
 
 1. Fast host UI preview
    python jetos.py gui
@@ -184,21 +202,21 @@ def print_modes() -> None:
    python jetos.py gui-docker
 
 3. Real JETOS VM / command line (kernel + JETOS Language PID 1)
-   python jetos.py dev --display serial
+   python jetos.py dev --profile fat --display serial
 
 4. VM with a display device
-   python jetos.py dev --display window
+   python jetos.py dev --profile fat --display window
    (display hardware is not yet proof that the JETOS desktop is wired to it)
 
 5. Raspberry Pi flash image
-   python tools/pi_host.py --model pi4 --network on
+   python tools/pi_host.py --model pi4 --profile skinny --network on
 
 6. Materialize and inspect the real upstream source trees
    python jetos.py sources sync
    python jetos.py sources status
    python jetos.py sources lines
 
-See SOURCE_TREE.txt for the exact claims and current source-completeness gaps.
+See SOURCE_TREE.txt for exact execution/source-completeness claims.
 """
     )
 
@@ -216,7 +234,7 @@ def main() -> int:
     sub.add_parser("test", help="run JETOS repository tests")
     sub.add_parser("language-check", help="check latest-stable Python pin")
     sub.add_parser("text", help="print every tracked UTF-8 JETOS-owned file")
-    sub.add_parser("modes", help="show the supported UI/VM/Pi/source test modes")
+    sub.add_parser("modes", help="show Fat/Skinny and supported test paths")
 
     sources = sub.add_parser("sources", help="materialize/inspect complete upstream source trees")
     source_sub = sources.add_subparsers(dest="sources_command", required=True)
@@ -252,7 +270,12 @@ def main() -> int:
     dev = sub.add_parser("dev", help="build/boot the real JETOS VM")
     dev.add_argument("--build-only", action="store_true")
     dev.add_argument("--native", action="store_true")
-    dev.add_argument("--profile", choices=("lean", "full"), default="lean")
+    dev.add_argument(
+        "--profile",
+        choices=mode.CLI_CHOICES,
+        default=mode.SKINNY,
+        help="fat=developer/PC; skinny=device/runtime (full/lean are legacy aliases)",
+    )
     dev.add_argument("--encryption", choices=("on", "off"), default="on")
     dev.add_argument("--display", choices=("serial", "window", "vnc"), default="serial")
     dev.add_argument("--vnc-port", type=int, default=5901)

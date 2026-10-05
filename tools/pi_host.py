@@ -6,8 +6,13 @@ import argparse
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+
+from jetos import mode  # noqa: E402
+
 BUILD = ROOT / ".build"
 
 
@@ -19,7 +24,12 @@ def run(args: list[str]) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Build a flashable Raspberry Pi JETOS image")
     parser.add_argument("--model", choices=("pi4", "pi5"), default="pi4")
-    parser.add_argument("--profile", choices=("lean", "full"), default="lean")
+    parser.add_argument(
+        "--profile",
+        choices=(mode.SKINNY, "lean"),
+        default=mode.SKINNY,
+        help="Raspberry Pi is currently a Skinny device target; lean is the legacy alias",
+    )
     parser.add_argument("--network", choices=("on", "off"), default="off")
     parser.add_argument("--size-mib", type=int, default=1024)
     args = parser.parse_args()
@@ -27,6 +37,10 @@ def main() -> int:
     docker = shutil.which("docker")
     if not docker:
         raise SystemExit("Docker is required for the portable ARM64 Pi image build")
+
+    canonical_mode = mode.normalize(args.profile)
+    if canonical_mode != mode.SKINNY:
+        raise SystemExit("Raspberry Pi image path currently supports Skinny Mode only")
 
     BUILD.mkdir(parents=True, exist_ok=True)
     run([docker, "build", "--platform", "linux/arm64", "-t", "jetos:pi", "."])
@@ -39,10 +53,7 @@ def main() -> int:
             "linux/arm64",
             "-v",
             f"{ROOT}:/jetos",
-            # Keep the ARM64 JETOS Language compiler/runtime artifacts isolated
-            # from any x86-64 dev build already present in the host .build tree.
-            "-v",
-            "jetos_pi_language_src:/jetos/.build/jetos-language-src",
+            # Keep ARM64 compiler/runtime artifacts isolated from an x86-64 host build.
             "-v",
             "jetos_pi_language_build:/jetos/.build/jetos-language-build",
             "-v",
@@ -56,7 +67,7 @@ def main() -> int:
             "--model",
             args.model,
             "--profile",
-            args.profile,
+            "lean",
             "--network",
             args.network,
             "--size-mib",
@@ -65,6 +76,7 @@ def main() -> int:
     )
     output = BUILD / f"jetos-{args.model}.img"
     print(f"\nJETOS image ready for flashing: {output}")
+    print("JETOS mode: skinny")
     return 0
 
 

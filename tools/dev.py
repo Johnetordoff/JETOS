@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Reproducible JETOS development build and VM runner.
 
-Upstream source lives visibly under sources/.  Compiled/generated artifacts live
-under .build/.  Keeping those separate makes it obvious which code is actually
-part of the operating-system source and which files are disposable build output.
+Upstream source lives visibly under sources/. Compiled/generated artifacts live
+under .build/. Fat Mode carries editable JETOS/JETOS Language source inside the
+image; Skinny Mode is the stripped device/runtime personality.
 """
 from __future__ import annotations
 
@@ -15,6 +15,10 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+
+from jetos import mode  # noqa: E402
+
 SOURCES = ROOT / "sources"
 BUILD = ROOT / ".build"
 
@@ -171,6 +175,7 @@ def build_all(profile: str) -> tuple[Path, Path]:
     if platform.system() != "Linux":
         raise SystemExit("native build requires Linux; use `python jetos.py dev`")
 
+    canonical_mode = mode.normalize(profile)
     tests()
     prepare_sources()
     runtime, stdlib = build_language()
@@ -189,10 +194,13 @@ def build_all(profile: str) -> tuple[Path, Path]:
             "--output",
             str(INITRAMFS),
             "--profile",
-            profile,
+            canonical_mode,
         ]
     )
-    run([sys.executable, "tools/size_report.py", "--strict"])
+    size_command = [sys.executable, "tools/size_report.py"]
+    if canonical_mode == mode.SKINNY:
+        size_command.append("--strict")
+    run(size_command)
     return kernel, INITRAMFS
 
 
@@ -202,7 +210,12 @@ def main() -> int:
 
     for name in ("build", "run"):
         command = sub.add_parser(name)
-        command.add_argument("--profile", choices=("lean", "full"), default="lean")
+        command.add_argument(
+            "--profile",
+            choices=mode.CLI_CHOICES,
+            default=mode.SKINNY,
+            help="fat=developer/PC; skinny=device/runtime (full/lean are legacy aliases)",
+        )
         command.add_argument("--encryption", choices=("on", "off"), default="on")
         command.add_argument(
             "--display",
@@ -225,6 +238,7 @@ def main() -> int:
         print(f"source root: {SOURCES}")
         print(f"build root: {BUILD}")
         print(f"architecture: {architecture()}")
+        print(f"canonical modes: {', '.join(mode.MODES)}")
         return 0
 
     kernel, initramfs = build_all(args.profile)
