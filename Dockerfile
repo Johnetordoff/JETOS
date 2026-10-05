@@ -7,6 +7,7 @@ RUN apt-get update \
         zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev \
         liblzma-dev uuid-dev xz-utils tcl-dev tk-dev libx11-dev \
         xvfb x11vnc qemu-system-x86 qemu-system-arm \
+        ca-certificates dosfstools mtools e2fsprogs \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /jetos
@@ -27,6 +28,7 @@ RUN python tools/test_interpreters.py
 RUN python tools/test_storage.py
 RUN python tools/test_storage_modes.py
 RUN python tools/test_runtime_image.py
+RUN python tools/test_pi.py
 RUN python tools/python_release.py check --offline-ok
 
 CMD ["python", "jetos.py", "doctor"]
