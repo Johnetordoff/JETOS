@@ -91,6 +91,42 @@ DISPLAY/UI
 4. Layout must derive from actual display geometry and survive odd/custom sizes.
 5. Keep layout policy separable from the renderer so geometry is headless-testable.
 
+PERSISTENT STORAGE AND ENCRYPTION
+---------------------------------
+1. Ordinary persistent JETOS data is encrypted at rest by default.
+2. Do not invent a new file cipher, AEAD construction, key derivation scheme, or
+   Python-level encryption format.  Use reviewed native/kernel cryptography.
+3. The first storage implementation target is transparent whole-volume encryption
+   using Linux device-mapper dm-crypt/LUKS.  Normal open/read/write/mmap APIs stay
+   ordinary; encryption/decryption happens below the filesystem.
+4. Plaintext in RAM is expected while data is actively used.  Kernel page cache,
+   tmpfs/ramfs, interpreter objects, and explicitly designed in-memory caches may
+   contain plaintext.  Do not describe RAM plaintext as persistent encryption
+   failure.
+5. Persistent plaintext is an EXCEPTION, never a secret bypass.  Every exception
+   must have an explicit path/scope, reason, owner, and observable audit evidence.
+6. Never add a hidden attribute, magic filename, undocumented flag, or hard-coded
+   secret that disables encryption.  If a caller requests plaintext persistence,
+   route it only to an explicitly configured plaintext storage domain and record
+   why that domain exists.
+7. The normal boot/firmware-readable partition may be a plaintext exception only
+   for non-secret boot artifacts.  User data, credentials, keys, logs containing
+   secrets, databases, swap, crash data, and application state do not belong there.
+8. Encryption keys must never be committed to Git, embedded in source/images,
+   printed to logs, or exposed through diagnostics.  Key acquisition/unsealing is
+   a separate boot-security boundary (passphrase, TPM/secure hardware, recovery
+   key, or another explicit mechanism).
+9. Encrypted swap is required before swap is enabled.  Hibernation must remain
+   disabled unless its image is protected by the same at-rest security model.
+10. Core dumps, crash dumps, temporary files that may persist, and application
+    caches inherit the encrypted-persistent-storage rule.
+11. Prefer memory-only caches for disposable decrypted data.  Sensitive buffer
+    zeroization in Python is best-effort only; do not claim guarantees CPython
+    cannot provide.  A measured/high-assurance wipe primitive may later be native.
+12. Storage status must be introspectable.  JETOS should be able to classify a
+    path as encrypted, memory-only plaintext, explicit plaintext exception, or
+    unprotected and fail closed for production persistent data.
+
 BOOT AND BUILD
 --------------
 1. JETOS-owned build/orchestration logic is Python.
