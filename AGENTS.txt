@@ -12,6 +12,24 @@ It is not "Linux plus some Python scripts". Linux is current native substrate;
 JETOS Language is intended to own as much operating-system behavior as can
 correctly execute above that substrate.
 
+JETOS LANGUAGE IS THE OPERATING ENVIRONMENT
+-------------------------------------------
+1. JETOS Language/CPython is not bundled for convenience. It is the normal OS
+   control plane, shell, service language, application scripting environment,
+   build/orchestration language, and primary public programming interface.
+2. JETOS Language is the only first-class programming environment JETOS promises
+   to make pleasant and complete. Other-language binaries may execute when the
+   native ABI/capabilities permit them, but JETOS does not need to ship their
+   compilers, package managers, SDKs, shells, or development ecosystems.
+3. Prefer extending JETOS Language/the standard library/JETOS-owned modules over
+   adding a second user-facing programming stack.
+4. Treat the JETOS Language fork as operating-system source. Parser/compiler/VM,
+   runtime, object model, import system, standard library, and extensions are all
+   eligible for reviewed JETOS changes when the benefit is justified and tested.
+5. Stable CPython updates are continuing OS maintenance, not optional dependency
+   refreshes. Keep rebasing the JETOS Language changes onto each newest stable
+   CPython release and keep the patch set small enough to carry forward.
+
 PYTHON VERSION POLICY
 ---------------------
 1. JETOS Language tracks the newest stable CPython feature/maintenance release.
@@ -48,6 +66,23 @@ PYTHON FIRST, NATIVE WHEN MEASURED
    correct synchronization remain required.
 7. New JETOS-owned C++ is prohibited. Imported C++ is migration debt.
 8. Assembly is limited to architecture-required boundaries.
+9. A C extension is justified by measured latency/throughput/footprint or a true
+   native boundary, not merely because C is available.
+10. Keep C APIs narrow. Python owns policy, orchestration, errors, and user-facing
+    semantics even when a primitive is accelerated in C.
+
+C++ ELIMINATION
+---------------
+1. C++ has no long-term implementation role in JETOS-owned operating-system code.
+2. Imported C++ may exist only as visible migration/bootstrap debt.
+3. Convert C++ incrementally to readable C or JETOS Language. Preserve behavior
+   with the upstream/native tests relevant to each converted component.
+4. When converting C++ to C, make ownership/lifetime/error paths explicit rather
+   than recreating C++ through opaque macros or generated state machines.
+5. Validate converted native code with strict warnings and sanitizers where the
+   environment supports them, and exercise every supported architecture/environment
+   that can materially change the behavior before claiming replacement complete.
+6. Never add new .cc/.cpp/.cxx/.hpp/.hh files under JETOS-owned src/ or tools/.
 
 SUBINTERPRETER MODEL
 --------------------
@@ -105,6 +140,21 @@ VISUAL AND VM TEST LEVELS
 5. Keep these claims separate in PRs/tests: renderer works, container visual works,
    VM boots, guest display works, bare metal works.
 
+FILESYSTEM ABSTRACTION
+----------------------
+1. ext4 is a useful first implementation, not JETOS identity.
+2. Filesystem selection is a capability/policy decision. JETOS-owned logic should
+   describe required semantics (persistent/ephemeral, writable/read-only,
+   encrypted/plaintext-authorized, size/latency/recovery needs) rather than assume
+   a particular on-disk filesystem everywhere.
+3. A target may use ext4, tmpfs, FAT for firmware boundaries, or another supported
+   filesystem when that environment requires it.
+4. Keep filesystem-specific native tooling behind small explicit adapters so JETOS
+   Language remains the control plane.
+5. It is valid to omit, disable, or substitute a filesystem/capability to fit a
+   constrained image as long as the resulting capability loss is explicit and the
+   declared device role still works.
+
 PERSISTENT STORAGE AND ENCRYPTION
 ---------------------------------
 1. Ordinary persistent JETOS data defaults to encryption at rest.
@@ -129,6 +179,29 @@ PERSISTENT STORAGE AND ENCRYPTION
 11. Swap must be encrypted before enabling it; hibernation remains disabled unless
     its image is protected by the same at-rest model.
 12. Storage status must be introspectable and production policy can fail closed.
+
+SMALLNESS, TYPES, AND BENCHMARKING
+---------------------------------
+1. Small source is an operating-system feature. Remove duplication, dead code,
+   needless wrappers, vague names, and accidental abstractions whenever behavior
+   can remain equally clear or clearer.
+2. Do not golf code or trade away readability/correctness merely to lower a line
+   count. The goal is fewer concepts and less maintenance surface, not denser text.
+3. Run `python tools/metrics.py` before/after material architecture work. PRs that
+   add substantial source should explain the new maintenance surface; cleanup PRs
+   should report what they removed or simplified.
+4. Use Python annotations throughout JETOS-owned APIs. Prefer explicit dataclasses,
+   enums, tuples, and narrow stable interfaces over unbounded ad-hoc object shapes.
+5. Keep the number of data representations/types needed for one concept low.
+   Convert at boundaries rather than proliferating nearly identical types.
+6. Run `python tools/benchmark.py` when touching hot-path candidates, native
+   boundaries, text/encoding, layout, storage parsing, or other benchmarked code.
+7. Benchmark evidence must record commit, Python version, architecture/platform,
+   iteration count, and results. Compare like-for-like environments; do not claim
+   a regression/improvement from incomparable machines.
+8. Do not impose a universal timing threshold across unlike hardware. Use repeated
+   measurements to locate bottlenecks and justify native work.
+9. Source metrics and benchmarks are evidence, not targets to game.
 
 IMAGE SIZE
 ----------
@@ -164,6 +237,23 @@ BOOT MEDIA AND INSTALLATION MODEL
 7. A preflashed image and an installed image should converge on the same runtime
    architecture, policies, desktop, and update model; installation is a way to put
    JETOS onto storage, not a different edition of the operating system.
+
+HOST COEXISTENCE AND PLATFORM SECURITY
+--------------------------------------
+1. JETOS never requires jailbreaking an iPhone/iPad or bypassing host platform
+   security. An Apple mobile-host experiment must stay within supported app,
+   emulator/VM, container-like, filesystem, and entitlement boundaries available
+   to ordinary non-jailbroken devices.
+2. On any host OS, partitioning or installation that changes storage requires an
+   explicit target and user approval. Prefer a VM/container/image when the host
+   should remain intact.
+3. JETOS may coexist with MacBrain or another host agent. Their relationship should
+   use an explicit local/network protocol, shared versioned artifacts, or other
+   narrow interface rather than either system silently rewriting the other's live
+   root or private state.
+4. A co-resident MacBrain may inspect/report/benchmark JETOS and JETOS may expose
+   diagnostics to it, but destructive cross-system actions remain separately
+   authorized operations.
 
 BOOT AND BUILD
 --------------
