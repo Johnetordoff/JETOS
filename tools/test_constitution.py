@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Guard the short normative JETOS architecture constitution against drift."""
+"""Guard the normative JETOS architecture constitution against drift."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -24,24 +24,27 @@ def main() -> int:
         "New JETOS-owned C++ MUST NOT be introduced",
         "A JETOS fork is not a frozen snapshot",
         "Merge conflicts are architectural decisions",
-        'blindly selecting "ours" or "theirs"',
-        "Fat Mode MUST carry",
-        "Skinny Mode MAY omit development source",
+        'blindly choose "ours" or "theirs"',
+        "case by case",
+        "newest stable CPython",
+        "exact Linux kernel source corresponding to the running system",
+        "Source visibility and runtime visibility are distinct properties",
         "one process-wide Global Interpreter Lock",
         "individual bytes or bits",
         "command-line/interactive JETOS Language control path",
-        "Local JETOS UI rendering MUST NOT require HTTP",
+        "SAME JETOS version and source lineage",
+        "Fat Mode MUST be able to derive, build, and program/flash Skinny images",
+        "target application/capability set",
         "canonical JETOS product artifact is a directly bootable image",
         "MUST NOT silently repartition",
         "source -> build rule -> artifact -> installed file -> image",
+        "jailbreaking iPhone/iPad",
         "implementation from proof",
         "Performance decisions MUST be benchmark-informed",
     )
 
     assert "README.md, AGENTS.txt" in text
-    assert "case by case" in text
-    assert "newest stable CPython" in text
-    assert "jailbreaking iPhone/iPad" in text
+    assert "HTTP, DNS, a remote web server" in text
 
     print("JETOS normative constitution: PASS")
     return 0
