@@ -1,11 +1,11 @@
 """JETOS persistent-storage encryption policy.
 
-JETOS does not implement novel file encryption in Python.  Ordinary persistent
+JETOS does not implement novel file encryption in Python. Ordinary persistent
 files are expected to live on a Linux dm-crypt-backed volume so normal open(),
 read(), write(), mmap(), and page-cache behavior remain transparent while bytes
 at rest are encrypted below the filesystem.
 
-Plaintext in RAM is expected while data is in use.  Plaintext persistent storage
+Plaintext in RAM is expected while data is in use. Plaintext persistent storage
 is an explicit, auditable exception and must never be a hidden bypass.
 """
 from __future__ import annotations
@@ -16,8 +16,8 @@ import os
 from typing import Iterable
 
 
-MEMORY_FILESYSTEMS = frozenset({"tmpfs", "ramfs", "devtmpfs"})
-DM_CRYPT_UUID_PREFIXES = ("CRYPT-", "CRYPT-LUKS1-", "CRYPT-LUKS2-")
+MEMORY_FILESYSTEMS = frozenset({"tmpfs", "ramfs", "rootfs", "devtmpfs"})
+DM_CRYPT_UUID_PREFIXES = ("CRYPT-",)
 
 
 @dataclass(frozen=True)
@@ -53,6 +53,43 @@ class PlaintextException:
 
 class StoragePolicyError(RuntimeError):
     pass
+
+
+class PlaintextMemoryCache:
+    """Best-effort in-memory cache for decrypted disposable bytes.
+
+    Values are kept only in process memory. bytearray is used so clear() can
+    overwrite the cache's own buffers before releasing them. This is NOT a
+    guarantee that CPython, the allocator, the kernel, or hardware retained no
+    additional copies; callers must not claim cryptographic memory erasure.
+    """
+
+    def __init__(self) -> None:
+        self._values: dict[str, bytearray] = {}
+
+    def put(self, key: str, value: bytes | bytearray | memoryview) -> None:
+        self.drop(key)
+        self._values[key] = bytearray(value)
+
+    def get(self, key: str) -> bytes | None:
+        value = self._values.get(key)
+        return None if value is None else bytes(value)
+
+    def drop(self, key: str) -> None:
+        value = self._values.pop(key, None)
+        if value is None:
+            return
+        value[:] = b"\x00" * len(value)
+
+    def clear(self) -> None:
+        for key in tuple(self._values):
+            self.drop(key)
+
+    def __enter__(self) -> "PlaintextMemoryCache":
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+        self.clear()
 
 
 def _unescape_mount_field(value: str) -> str:
@@ -114,10 +151,11 @@ def _read_text(path: Path) -> str | None:
         return None
 
 
-def dm_uuid(root: Path, major_minor: str) -> str | None:
-    # /sys/dev/block/MAJOR:MINOR is normally a symlink into /sys/devices.  Tests
-    # may provide a normal directory with the same observable layout.
-    return _read_text(root / "sys/dev/block" / major_minor / "dm/uuid")
+def _children(path: Path) -> tuple[Path, ...]:
+    try:
+        return tuple(sorted(path.iterdir(), key=lambda item: item.name))
+    except (FileNotFoundError, PermissionError, NotADirectoryError, OSError):
+        return ()
 
 
 def _is_dm_crypt_uuid(value: str | None) -> bool:
@@ -125,6 +163,42 @@ def _is_dm_crypt_uuid(value: str | None) -> bool:
         return False
     upper = value.upper()
     return any(upper.startswith(prefix) for prefix in DM_CRYPT_UUID_PREFIXES)
+
+
+def encryption_chain(root: Path, major_minor: str) -> tuple[bool, tuple[str, ...]]:
+    """Walk a block-device stack looking for a dm-crypt layer.
+
+    This handles common layouts such as ext4 -> LVM -> dm-crypt -> disk instead
+    of requiring the mounted filesystem's immediate device to be dm-crypt.
+    """
+    seen: set[str] = set()
+    evidence: list[str] = []
+
+    def walk(device: str) -> bool:
+        if device in seen:
+            return False
+        seen.add(device)
+        path = root / "sys/dev/block" / device
+        uuid = _read_text(path / "dm/uuid")
+        if uuid:
+            evidence.append(f"dm-uuid:{device}:{uuid}")
+            if _is_dm_crypt_uuid(uuid):
+                return True
+
+        encrypted = False
+        for slave in _children(path / "slaves"):
+            slave_device = _read_text(slave / "dev")
+            if slave_device:
+                evidence.append(f"slave:{device}->{slave_device}")
+                encrypted = walk(slave_device) or encrypted
+            else:
+                slave_uuid = _read_text(slave / "dm/uuid")
+                if slave_uuid:
+                    evidence.append(f"slave-dm-uuid:{device}:{slave.name}:{slave_uuid}")
+                    encrypted = _is_dm_crypt_uuid(slave_uuid) or encrypted
+        return encrypted
+
+    return walk(major_minor), tuple(evidence)
 
 
 class StoragePolicy:
@@ -178,10 +252,9 @@ class StoragePolicy:
                 evidence=tuple(evidence + ["ephemeral-memory-filesystem"]),
             )
 
-        uuid = dm_uuid(self.root, mount.major_minor)
-        if uuid:
-            evidence.append(f"dm-uuid:{uuid}")
-        if _is_dm_crypt_uuid(uuid):
+        encrypted, chain_evidence = encryption_chain(self.root, mount.major_minor)
+        evidence.extend(chain_evidence)
+        if encrypted:
             return StorageState(
                 absolute,
                 mount.mountpoint,
@@ -238,8 +311,8 @@ class StoragePolicy:
 
 
 def default_policy(root: str | os.PathLike[str] = "/") -> StoragePolicy:
-    # The early boot partition may need to remain readable by firmware.  It may
-    # contain only non-secret boot artifacts.  Additional exceptions require an
+    # The early boot partition may need to remain readable by firmware. It may
+    # contain only non-secret boot artifacts. Additional exceptions require an
     # explicit policy change; there is intentionally no secret bypass flag.
     return StoragePolicy(
         root=root,
@@ -253,5 +326,9 @@ def default_policy(root: str | os.PathLike[str] = "/") -> StoragePolicy:
     )
 
 
-def status(path: str | os.PathLike[str] = "/", *, root: str | os.PathLike[str] = "/") -> dict[str, object]:
+def status(
+    path: str | os.PathLike[str] = "/",
+    *,
+    root: str | os.PathLike[str] = "/",
+) -> dict[str, object]:
     return default_policy(root).inspect(path).as_dict()
