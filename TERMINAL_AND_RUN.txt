@@ -1,0 +1,60 @@
+JETOS TERMINAL IDENTITY AND RUN CONTRACT
+========================================
+
+STATUS
+------
+This is a normative subordinate specification under JETOS_CONSTITUTION.txt,
+especially the command-line, permission, boot, and evidence rules.
+
+1. USER-ATTRIBUTED PROMPTS
+--------------------------
+1. Every interactive JETOS command-entry surface MUST visibly identify the user
+   whose effective permission context will execute the command.
+2. The canonical primary prompt form is:
+
+       <user>@jetos> 
+
+   and the canonical multiline continuation form is:
+
+       <user>@jetos...> 
+
+3. The displayed user MUST be derived from the effective operating-system/JETOS
+   permission identity, not from an unrelated decorative profile name.
+4. If a textual account name cannot be resolved, JETOS MUST still display a stable
+   effective identity such as uid1000 rather than an anonymous prompt.
+5. PID-1/serial consoles and graphical terminal applications MUST use the same
+   identity and prompt implementation.
+6. The effective user identity SHOULD be directly inspectable from the interactive
+   JETOS Language namespace.
+7. Future authentication/session systems MAY refine how an effective JETOS user is
+   established, but MUST preserve the invariant that the visible prompt identifies
+   the permission principal executing the command.
+
+2. CANONICAL EASY START
+-----------------------
+1. The obvious source-checkout command to start JETOS is:
+
+       python jetos.py run
+
+2. `run` MUST represent an actual JETOS VM/kernel/userspace boot path, not merely a
+   host GUI mock-up. The current default is Fat Mode plus a serial JETOS Language
+   console through the portable Docker/QEMU build path.
+3. `python jetos.py boot` MAY remain an alias for `run`.
+4. Expert/development controls MAY remain under `python jetos.py dev`, but ordinary
+   users MUST NOT need to know internal build-script names merely to boot JETOS.
+5. `python jetos.py gui` and `gui-docker` remain useful renderer previews, but MUST
+   NOT be described as proof that JETOS itself booted.
+6. `run` MAY select Fat or Skinny mode and serial/window/VNC display explicitly.
+7. The easy-start path MUST NOT silently partition, format, flash, or overwrite a
+   physical disk. Raspberry Pi/physical-media creation remains a separate explicit
+   image-building/flashing workflow.
+
+3. DEFAULT DEVELOPMENT EXPERIENCE
+---------------------------------
+1. The default `run` personality is Fat Mode because source-checkout execution is a
+   development/personal-computer workflow.
+2. The default display is serial until the guest graphical backend is proven to
+   start the actual JETOS desktop reliably.
+3. A first run MAY take substantial build time because pinned JETOS Language and
+   kernel source must be materialized and compiled. This is preferable to silently
+   substituting a host preview for a real boot.

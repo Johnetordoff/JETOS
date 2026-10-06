@@ -1,7 +1,6 @@
 """JETOS first-stage userspace and main-interpreter OS supervisor."""
 from __future__ import annotations
 
-import code
 import ctypes
 import errno
 import os
@@ -10,7 +9,9 @@ import platform
 import signal
 import sys
 
+from jetos import console as jetos_console
 from jetos import hardware, network, storage
+from jetos.identity import UserIdentity, current_user
 from jetos.interpreters import InterpreterSupervisor, plan_services, supported
 
 
@@ -64,6 +65,7 @@ def _print_boot_record(
     snapshot: dict[str, object],
     storage_policy: storage.StoragePolicy,
     network_status: network.NetworkStatus,
+    session_user: UserIdentity,
 ) -> None:
     capabilities = snapshot.get("capabilities", {})
     present = []
@@ -76,6 +78,7 @@ def _print_boot_record(
 
     print("JETOS 0.1 — John E Tordoff's Operating System", flush=True)
     print(f"pid: {os.getpid()} (main JETOS supervisor interpreter)", flush=True)
+    print(f"user: {session_user.describe()}", flush=True)
     print(f"kernel: {platform.release()}", flush=True)
     print(f"architecture: {platform.machine()}", flush=True)
     print(f"language implementation: {sys.implementation.name}", flush=True)
@@ -108,9 +111,7 @@ def _print_boot_record(
         print(f"live source repository: {repo}", flush=True)
 
 
-def _start_services(
-    snapshot: dict[str, object],
-) -> InterpreterSupervisor | None:
+def _start_services(snapshot: dict[str, object]) -> InterpreterSupervisor | None:
     if not supported():
         print(
             "subinterpreters: unavailable in bootstrap runtime; "
@@ -135,25 +136,23 @@ def _run_console(
     supervisor: InterpreterSupervisor | None,
     storage_policy: storage.StoragePolicy,
     network_status: network.NetworkStatus,
+    session_user: UserIdentity,
 ) -> None:
     print("session: JETOS Language diagnostic console", flush=True)
     print(
-        "objects: snapshot, hardware, supervisor, storage_policy, network_status",
+        "objects: user, snapshot, hardware, supervisor, storage_policy, network_status",
         flush=True,
     )
     print("", flush=True)
-    namespace = {
+    namespace: dict[str, object] = {
+        "user": session_user,
         "snapshot": snapshot,
         "hardware": hardware,
         "supervisor": supervisor,
         "storage_policy": storage_policy,
         "network_status": network_status,
     }
-    code.interact(
-        banner="JETOS Language console",
-        local=namespace,
-        exitmsg="Leaving JETOS Language console",
-    )
+    jetos_console.interact(namespace=namespace, user=session_user)
 
 
 def _display_available() -> bool:
@@ -209,6 +208,7 @@ def main() -> None:
     os.environ.setdefault("LANG", "C.UTF-8")
     os.environ.setdefault("LC_ALL", "C.UTF-8")
 
+    session_user = current_user()
     boot_storage_mode = os.environ.get("JETOS_BOOT_STORAGE_MODE")
     if boot_storage_mode is None:
         storage_policy = storage.policy_from_cmdline()
@@ -218,7 +218,7 @@ def main() -> None:
         )
     network_status = network.configure_from_cmdline()
     snapshot = hardware.discover()
-    _print_boot_record(snapshot, storage_policy, network_status)
+    _print_boot_record(snapshot, storage_policy, network_status, session_user)
     supervisor = _start_services(snapshot)
 
     if os.getpid() == 1:
@@ -228,7 +228,13 @@ def main() -> None:
         target = os.environ.get("JETOS_BOOT_TARGET", "desktop").lower()
         if target == "desktop":
             _run_desktop()
-        _run_console(snapshot, supervisor, storage_policy, network_status)
+        _run_console(
+            snapshot,
+            supervisor,
+            storage_policy,
+            network_status,
+            session_user,
+        )
     except RestartUserspace:
         if supervisor is not None:
             supervisor.close_all()

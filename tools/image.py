@@ -80,35 +80,42 @@ def _ignore_fat_source(_directory: str, names: list[str]) -> set[str]:
     return {name for name in names if name in FAT_SOURCE_IGNORE or name.endswith(".pyc")}
 
 
-def copy_fat_sources(rootfs: Path) -> tuple[Path, Path]:
-    """Carry editable JETOS and JETOS Language source inside Fat Mode."""
-    language_source = ROOT / "sources" / "cpython"
-    if not language_source.is_dir():
+def _copy_upstream_source(source: Path, target: Path, label: str) -> None:
+    if not source.is_dir():
         raise SystemExit(
-            "Fat Mode requires materialized JETOS Language source. "
-            "Run `python jetos.py sources sync jetos-language` first."
+            f"Fat Mode requires materialized {label} source. "
+            "Run `python jetos.py sources sync` first."
         )
+    remove_tree(target)
+    shutil.copytree(
+        source,
+        target,
+        ignore=shutil.ignore_patterns(".git", "__pycache__", "*.pyc"),
+        symlinks=True,
+    )
+
+
+def copy_fat_sources(rootfs: Path) -> tuple[Path, Path, Path]:
+    """Carry editable JETOS, JETOS Language, and Linux source inside Fat Mode."""
+    language_source = ROOT / "sources" / "cpython"
+    linux_source = ROOT / "sources" / "linux"
 
     source_root = rootfs / "usr" / "src"
     jetos_target = source_root / "jetos"
     language_target = source_root / "jetos-language"
-    remove_tree(jetos_target)
-    remove_tree(language_target)
-    source_root.mkdir(parents=True, exist_ok=True)
+    linux_target = source_root / "linux"
 
+    remove_tree(jetos_target)
+    source_root.mkdir(parents=True, exist_ok=True)
     shutil.copytree(
         ROOT,
         jetos_target,
         ignore=_ignore_fat_source,
         symlinks=True,
     )
-    shutil.copytree(
-        language_source,
-        language_target,
-        ignore=shutil.ignore_patterns(".git", "__pycache__", "*.pyc"),
-        symlinks=True,
-    )
-    return jetos_target, language_target
+    _copy_upstream_source(language_source, language_target, "JETOS Language/CPython")
+    _copy_upstream_source(linux_source, linux_target, "Linux kernel")
+    return jetos_target, language_target, linux_target
 
 
 def tree_stats(root: Path) -> tuple[int, int]:
@@ -127,7 +134,7 @@ def tree_stats(root: Path) -> tuple[int, int]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Build a JETOS Fat/ Skinny rootfs/initramfs")
+    parser = argparse.ArgumentParser(description="Build a JETOS Fat/Skinny rootfs/initramfs")
     parser.add_argument("--python", type=Path, required=True)
     parser.add_argument("--stdlib", type=Path, required=True)
     parser.add_argument("--rootfs", type=Path, default=ROOT / ".build/rootfs")
@@ -155,9 +162,10 @@ def main() -> int:
             "of standard-library tests/demos/bootstrap caches"
         )
     else:
-        jetos_source, language_source = copy_fat_sources(args.rootfs)
+        jetos_source, language_source, linux_source = copy_fat_sources(args.rootfs)
         print(f"Fat Mode JETOS source: {jetos_source}")
         print(f"Fat Mode JETOS Language source: {language_source}")
+        print(f"Fat Mode Linux source: {linux_source}")
 
     after_files, after_bytes = tree_stats(args.rootfs)
     build.build_initramfs(args.rootfs, args.output)

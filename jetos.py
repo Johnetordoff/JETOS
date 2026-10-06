@@ -48,6 +48,8 @@ def tests() -> None:
         "test_storage_modes.py",
         "test_sources.py",
         "test_modes.py",
+        "test_constitution.py",
+        "test_console.py",
     ):
         python_tool(script, [])
 
@@ -103,6 +105,42 @@ def docker_dev(
         command.extend(["--vnc-bind", "0.0.0.0"])
         print(f"QEMU VNC will be published at localhost:{vnc_port}", flush=True)
     raise SystemExit(subprocess.call(command, cwd=ROOT))
+
+
+def boot_jetos(
+    *,
+    native: bool,
+    build_only: bool,
+    profile: str,
+    encryption: str,
+    display: str,
+    vnc_port: int,
+) -> None:
+    canonical = mode.normalize(profile)
+    print(
+        f"JETOS boot: mode={canonical} display={display} "
+        f"backend={'native Linux' if native else 'portable Docker/QEMU'}",
+        flush=True,
+    )
+    if native:
+        forwarded = [
+            "build" if build_only else "run",
+            "--profile",
+            canonical,
+            "--encryption",
+            encryption,
+            "--display",
+            display,
+        ]
+        python_tool("dev.py", forwarded)
+        return
+    docker_dev(
+        build_only=build_only,
+        profile=canonical,
+        encryption=encryption,
+        display=display,
+        vnc_port=vnc_port,
+    )
 
 
 def docker_gui(geometry: str, port: int) -> None:
@@ -181,49 +219,65 @@ def print_modes() -> None:
     print(
         """JETOS canonical deployment modes
 
+Fastest real JETOS boot
+  python jetos.py run
+
+This boots a Fat-mode JETOS VM to the JETOS Language serial console using the
+portable Docker/QEMU path. The first build materializes and compiles pinned source.
+
 Fat Mode
-  Personal-computer/developer personality. Carries editable JETOS source and the
-  JETOS Language/CPython source with the running machine, plus tests, inspection
-  surfaces, and development tools. This is the mode for deep live introspection.
+  Personal-computer/developer personality. Carries editable JETOS, JETOS Language,
+  and Linux source with development and introspection surfaces.
 
 Skinny Mode
-  Device/runtime personality. Development-only source, tests, and tooling may be
-  stripped, but the same JETOS runtime APIs, diagnostics, and reproducible source
-  provenance remain. Skinny is not a different operating system.
+  Device/application personality. Development-only source, tests, and tooling may
+  be stripped while runtime APIs and reproducible source provenance remain.
 
 Compatibility aliases: full -> fat, lean -> skinny.
 
-JETOS test paths
+Other useful paths
+  python jetos.py run --profile skinny
+  python jetos.py run --display window
+  python jetos.py run --display vnc
+  python jetos.py run --native              # Linux host only
+  python jetos.py gui                       # host UI preview, not OS boot proof
+  python jetos.py gui-docker                # reproducible UI preview
+  python tools/pi_host.py --model pi4 --profile skinny --network on
 
-1. Fast host UI preview
-   python jetos.py gui
-
-2. Reproducible container UI preview
-   python jetos.py gui-docker
-
-3. Real JETOS VM / command line (kernel + JETOS Language PID 1)
-   python jetos.py dev --profile fat --display serial
-
-4. VM with a display device
-   python jetos.py dev --profile fat --display window
-   (display hardware is not yet proof that the JETOS desktop is wired to it)
-
-5. Raspberry Pi flash image
-   python tools/pi_host.py --model pi4 --profile skinny --network on
-
-6. Materialize and inspect the real upstream source trees
-   python jetos.py sources sync
-   python jetos.py sources status
-   python jetos.py sources lines
-
-See SOURCE_TREE.txt for exact execution/source-completeness claims.
+Source inspection
+  python jetos.py sources sync
+  python jetos.py sources status
+  python jetos.py sources lines
 """
     )
 
 
+def add_boot_arguments(parser: argparse.ArgumentParser, *, default_profile: str) -> None:
+    parser.add_argument("--build-only", action="store_true")
+    parser.add_argument("--native", action="store_true")
+    parser.add_argument(
+        "--profile",
+        choices=mode.CLI_CHOICES,
+        default=default_profile,
+        help="fat=developer/PC; skinny=device/runtime (full/lean are legacy aliases)",
+    )
+    parser.add_argument("--encryption", choices=("on", "off"), default="on")
+    parser.add_argument("--display", choices=("serial", "window", "vnc"), default="serial")
+    parser.add_argument("--vnc-port", type=int, default=5901)
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description="JETOS development/test entry point")
+    parser = argparse.ArgumentParser(
+        description="JETOS development/test entry point; use `run` to boot JETOS"
+    )
     sub = parser.add_subparsers(dest="command", required=True)
+
+    run_command = sub.add_parser(
+        "run",
+        aliases=["boot"],
+        help="build and boot a real JETOS VM (canonical easy-start command)",
+    )
+    add_boot_arguments(run_command, default_profile=mode.FAT)
 
     sub.add_parser("doctor", help="check host development prerequisites")
     setup = sub.add_parser("setup", help="plan or install host prerequisites")
@@ -234,7 +288,7 @@ def main() -> int:
     sub.add_parser("test", help="run JETOS repository tests")
     sub.add_parser("language-check", help="check latest-stable Python pin")
     sub.add_parser("text", help="print every tracked UTF-8 JETOS-owned file")
-    sub.add_parser("modes", help="show Fat/Skinny and supported test paths")
+    sub.add_parser("modes", help="show Fat/Skinny and supported run/test paths")
 
     sources = sub.add_parser("sources", help="materialize/inspect complete upstream source trees")
     source_sub = sources.add_subparsers(dest="sources_command", required=True)
@@ -260,25 +314,15 @@ def main() -> int:
     gui_docker.add_argument("--geometry", default="640x480")
     gui_docker.add_argument("--port", type=int, default=5900)
 
-    storage = sub.add_parser("storage", help="inspect global/scoped storage policy")
-    storage.add_argument("paths", nargs="*", default=["/", "/boot", "/tmp"])
-    storage.add_argument("--strict", action="store_true")
-    storage.add_argument("--encryption", choices=("on", "off"), default="on")
-    storage.add_argument("--override", action="append", default=[])
-    storage.add_argument("--config")
+    storage_parser = sub.add_parser("storage", help="inspect global/scoped storage policy")
+    storage_parser.add_argument("paths", nargs="*", default=["/", "/boot", "/tmp"])
+    storage_parser.add_argument("--strict", action="store_true")
+    storage_parser.add_argument("--encryption", choices=("on", "off"), default="on")
+    storage_parser.add_argument("--override", action="append", default=[])
+    storage_parser.add_argument("--config")
 
-    dev = sub.add_parser("dev", help="build/boot the real JETOS VM")
-    dev.add_argument("--build-only", action="store_true")
-    dev.add_argument("--native", action="store_true")
-    dev.add_argument(
-        "--profile",
-        choices=mode.CLI_CHOICES,
-        default=mode.SKINNY,
-        help="fat=developer/PC; skinny=device/runtime (full/lean are legacy aliases)",
-    )
-    dev.add_argument("--encryption", choices=("on", "off"), default="on")
-    dev.add_argument("--display", choices=("serial", "window", "vnc"), default="serial")
-    dev.add_argument("--vnc-port", type=int, default=5901)
+    dev = sub.add_parser("dev", help="lower-level JETOS VM build/boot controls")
+    add_boot_arguments(dev, default_profile=mode.SKINNY)
 
     size = sub.add_parser("size", help="measure/enforce JETOS image-size budgets")
     size.add_argument("--strict", action="store_true")
@@ -287,7 +331,16 @@ def main() -> int:
 
     args = parser.parse_args()
 
-    if args.command == "doctor":
+    if args.command in {"run", "boot", "dev"}:
+        boot_jetos(
+            native=args.native,
+            build_only=args.build_only,
+            profile=args.profile,
+            encryption=args.encryption,
+            display=args.display,
+            vnc_port=args.vnc_port,
+        )
+    elif args.command == "doctor":
         python_tool("host.py", ["doctor"])
     elif args.command == "setup":
         forwarded = ["install" if args.install else "plan"]
@@ -334,26 +387,6 @@ def main() -> int:
             [sys.executable, str(ROOT / "tools/storage_status.py"), *forwarded],
             check=False,
         ).returncode
-    elif args.command == "dev":
-        if args.native:
-            forwarded = [
-                "build" if args.build_only else "run",
-                "--profile",
-                args.profile,
-                "--encryption",
-                args.encryption,
-                "--display",
-                args.display,
-            ]
-            python_tool("dev.py", forwarded)
-        else:
-            docker_dev(
-                build_only=args.build_only,
-                profile=args.profile,
-                encryption=args.encryption,
-                display=args.display,
-                vnc_port=args.vnc_port,
-            )
     elif args.command == "size":
         forwarded = [
             "--rootfs-budget-mib",
