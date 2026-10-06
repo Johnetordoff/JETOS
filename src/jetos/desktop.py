@@ -6,11 +6,11 @@ Linux exposes through the JETOS hardware registry.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime
 import argparse
 import code
 import contextlib
+from dataclasses import dataclass
+from datetime import datetime
 import io
 import os
 import pprint
@@ -18,6 +18,8 @@ import re
 from typing import Callable
 
 from jetos import apps, hardware
+from jetos import console as jetos_console
+from jetos.identity import current_user
 
 try:
     import tkinter as tk
@@ -75,12 +77,9 @@ def layout_for(width: int, height: int) -> DesktopLayout:
     if width < MIN_WIDTH or height < MIN_HEIGHT:
         raise ValueError("display dimensions must be positive")
 
-    # 640x480 is a visual reference, never a required display mode.
     scale = max(0.25, min(width / 640.0, height / 480.0))
-
     taskbar_height = _clamp(round(30 * scale), 1, height)
     taskbar = Rect(0, height - taskbar_height, width, taskbar_height)
-
     margin = _clamp(round(3 * scale), 0, max(0, taskbar_height // 3))
     content_height = max(1, taskbar_height - 2 * margin)
 
@@ -102,10 +101,8 @@ def layout_for(width: int, height: int) -> DesktopLayout:
     )
 
     work_height = max(0, taskbar.y)
-    preferred_w = round(360 * scale)
-    preferred_h = round(180 * scale)
-    window_w = _clamp(preferred_w, 1, max(1, width))
-    window_h = _clamp(preferred_h, 1, max(1, work_height or height))
+    window_w = _clamp(round(360 * scale), 1, max(1, width))
+    window_h = _clamp(round(180 * scale), 1, max(1, work_height or height))
     welcome_window = Rect(
         max(0, (width - window_w) // 2),
         max(0, ((work_height or height) - window_h) // 2),
@@ -151,7 +148,6 @@ class Desktop:
         self.splash_ms = max(0, splash_ms)
         self.machine_snapshot = machine_snapshot or hardware.discover()
         self.app_specs = apps.available(self.machine_snapshot)
-        self._app_by_title = {app.title: app for app in self.app_specs}
         self._clock_item: int | None = None
         self._fullscreen = fullscreen
         self._last_layout: DesktopLayout | None = None
@@ -168,7 +164,6 @@ class Desktop:
 
         self.width = max(1, int(width))
         self.height = max(1, int(height))
-
         self.canvas = tk.Canvas(
             self.root,
             highlightthickness=0,
@@ -195,7 +190,6 @@ class Desktop:
         self.root.bind("<Escape>", lambda _event: self.root.destroy())
         self.root.bind("<F11>", self._toggle_fullscreen)
         self.canvas.tag_bind("start", "<Button-1>", self._show_start_menu)
-
         self._show_splash()
         self.root.after(1000, self._refresh_clock)
 
@@ -256,9 +250,7 @@ class Desktop:
             outline=fill,
             tags=tags,
         )
-        bright = "#ffffff"
-        shadow = "#808080"
-        dark = "#000000"
+        bright, shadow, dark = "#ffffff", "#808080", "#000000"
         top = shadow if sunken else bright
         left = shadow if sunken else bright
         bottom = bright if sunken else dark
@@ -319,7 +311,6 @@ class Desktop:
             fill="#000000",
             tags=("start",),
         )
-
         self._bevel(layout.clock, sunken=True)
         self._clock_item = self.canvas.create_text(
             layout.clock.x + layout.clock.width // 2,
@@ -420,22 +411,45 @@ class Desktop:
             wrap="word",
         )
         transcript.pack(fill="both", expand=True, padx=4, pady=(4, 0))
-        entry = tk.Entry(window, font=("TkFixedFont", 10))
-        entry.pack(fill="x", padx=4, pady=4)
-        console = code.InteractiveConsole(
+
+        session_user = current_user()
+        python_console = code.InteractiveConsole(
             {
+                "user": session_user,
                 "hardware": hardware,
                 "snapshot": self.machine_snapshot,
             }
         )
-        state = {"prompt": "jetos> "}
+        state = {"prompt": jetos_console.primary_prompt(session_user)}
+
+        command_bar = tk.Frame(window, bg="#000000")
+        command_bar.pack(fill="x", padx=4, pady=4)
+        prompt_label = tk.Label(
+            command_bar,
+            text=state["prompt"],
+            bg="#000000",
+            fg="#c0c0c0",
+            font=("TkFixedFont", 10, "bold"),
+            anchor="w",
+        )
+        prompt_label.pack(side="left")
+        entry = tk.Entry(
+            command_bar,
+            font=("TkFixedFont", 10),
+            bg="#000000",
+            fg="#ffffff",
+            insertbackground="#ffffff",
+            relief="flat",
+        )
+        entry.pack(side="left", fill="x", expand=True)
 
         def append(text: str) -> None:
             transcript.insert("end", text)
             transcript.see("end")
 
         append("JETOS Language terminal\n")
-        append("hardware and snapshot are preloaded.\n\n")
+        append(f"session user: {session_user.describe()}\n")
+        append("user, hardware, and snapshot are preloaded.\n\n")
 
         def execute(_event: object | None = None) -> str:
             command = entry.get()
@@ -443,9 +457,14 @@ class Desktop:
             append(state["prompt"] + command + "\n")
             output = io.StringIO()
             with contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
-                more = console.push(command)
+                more = python_console.push(command)
             append(output.getvalue())
-            state["prompt"] = ".....> " if more else "jetos> "
+            state["prompt"] = (
+                jetos_console.continuation_prompt(session_user)
+                if more
+                else jetos_console.primary_prompt(session_user)
+            )
+            prompt_label.configure(text=state["prompt"])
             return "break"
 
         entry.bind("<Return>", execute)
