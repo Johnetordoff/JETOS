@@ -1,11 +1,5 @@
 #!/usr/bin/env python3
-"""JETOS Gen2 frozen-source intake, sealing, verification, and census.
-
-Normal Gen2 operation is local-only.  The one-time `intake` command copies the
-already materialized source seeds into gen2/vendor, strips source-VCS metadata,
-and seals every ordinary file by path/size/SHA-256.  Once sealed, build/boot
-code consumes only the Gen2 tree.
-"""
+"""JETOS Gen2 frozen-source intake, sealing, verification, and census."""
 from __future__ import annotations
 
 import argparse
@@ -22,7 +16,6 @@ VENDOR = GEN2 / "vendor"
 MANIFEST = GEN2 / "manifest.json"
 SEED_ROOT = ROOT / "sources"
 
-# These names are JETOS identities, not runtime references to external projects.
 COMPONENTS = {
     "jetos-python": (SEED_ROOT / "cpython", VENDOR / "jetos-python"),
     "jetos-kernel": (SEED_ROOT / "linux", VENDOR / "jetos-kernel"),
@@ -45,9 +38,7 @@ def ordinary_files(root: Path):
         if not path.is_file() or path.is_symlink():
             continue
         rel = path.relative_to(root)
-        if any(part in SKIP_PARTS for part in rel.parts):
-            continue
-        if path.suffix in SKIP_SUFFIXES:
+        if any(part in SKIP_PARTS for part in rel.parts) or path.suffix in SKIP_SUFFIXES:
             continue
         yield path, rel
 
@@ -55,9 +46,9 @@ def ordinary_files(root: Path):
 def copy_component(source: Path, target: Path) -> None:
     if not source.is_dir():
         raise SystemExit(
-            f"missing frozen-source intake seed: {source}\n"
-            "Materialize the pinned seed on the authorized development/controller "
-            "machine first; Gen2 boot will never fetch it automatically."
+            f"missing Gen2 intake seed: {source}\n"
+            "Materialize the one-time intake seed on the authorized development/controller "
+            "machine first; Gen2 build/boot never fetches it automatically."
         )
     if target.exists():
         shutil.rmtree(target)
@@ -67,6 +58,41 @@ def copy_component(source: Path, target: Path) -> None:
         target,
         symlinks=True,
         ignore=shutil.ignore_patterns(".git", "__pycache__", "*.pyc", "*.pyo"),
+    )
+
+
+def internalize_jetos_python(source: Path) -> None:
+    """Turn the admitted Python seed into JetOS Python before the Gen2 seal."""
+    sysmodule = source / "Python/sysmodule.c"
+    if not sysmodule.is_file():
+        raise SystemExit("JetOS Python intake is missing Python/sysmodule.c")
+    text = sysmodule.read_text(encoding="utf-8")
+    if '#define NAME "cpython"' in text:
+        text = text.replace('#define NAME "cpython"', '#define NAME "jetos"', 1)
+    if '#define NAME "jetos"' not in text:
+        raise SystemExit("could not install JetOS Python implementation identity")
+
+    # Remove old seed-identity runtime fields if the legacy intake tooling added them.
+    text = "\n".join(
+        line for line in text.splitlines()
+        if "jetos_python_base_version" not in line
+    ) + "\n"
+    include_line = '#include "jetos.h"          // JETOS Language identity'
+    if include_line not in text:
+        python_include = '#include "Python.h"'
+        if python_include not in text:
+            raise SystemExit("could not locate Python.h include for JetOS Python identity")
+        text = text.replace(python_include, python_include + "\n" + include_line, 1)
+    sysmodule.write_text(text, encoding="utf-8")
+
+    header = source / "Include/jetos.h"
+    header.write_text(
+        "#ifndef Py_JETOS_H\n"
+        "#define Py_JETOS_H\n\n"
+        "/* JetOS Python identity. Historical intake provenance is not runtime identity. */\n"
+        '#define JETOS_PYTHON_GENERATION "Gen2"\n'
+        "\n#endif /* Py_JETOS_H */\n",
+        encoding="utf-8",
     )
 
 
@@ -106,6 +132,7 @@ def write_manifest(payload: dict[str, object]) -> None:
 def intake() -> None:
     for _, (source, target) in COMPONENTS.items():
         copy_component(source, target)
+    internalize_jetos_python(VENDOR / "jetos-python")
     payload = build_manifest()
     write_manifest(payload)
     print("JETOS Gen2 source intake sealed.")
@@ -137,8 +164,7 @@ def verify() -> None:
             continue
         component = str(row.get("component") or "")
         relative = str(row.get("path") or "")
-        key = (component, relative)
-        seen.add(key)
+        seen.add((component, relative))
         root = roots.get(component)
         if root is None:
             failures.append(f"unknown component {component}")
@@ -171,8 +197,7 @@ def census() -> None:
     total = 0
     for _, (_, root) in COMPONENTS.items():
         for path, _ in ordinary_files(root):
-            suffix = path.suffix if path.suffix else "[no extension]"
-            suffixes[suffix] += 1
+            suffixes[path.suffix if path.suffix else "[no extension]"] += 1
             total += 1
     print(f"Gen2 source files: {total:,}")
     for suffix, count in suffixes.most_common():
@@ -191,7 +216,7 @@ def status() -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="JETOS Gen2 frozen source manager")
     sub = parser.add_subparsers(dest="command", required=True)
-    sub.add_parser("intake", help="copy current source seeds into frozen Gen2 and seal them")
+    sub.add_parser("intake", help="copy the current intake seeds into Gen2, internalize them, and seal")
     sub.add_parser("verify", help="verify every frozen Gen2 file")
     sub.add_parser("status", help="show Gen2 source presence and seal state")
     sub.add_parser("census", help="verify and count Gen2 source files by type")
