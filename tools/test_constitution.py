@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Guard the normative JETOS architecture constitution against drift."""
+"""Guard the normative JETOS Gen2 architecture constitution against drift."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -15,38 +15,32 @@ def require(text: str, *phrases: str) -> None:
 
 def main() -> int:
     text = CONSTITUTION.read_text(encoding="utf-8")
-
     require(
         text,
         "JETOS NORMATIVE ARCHITECTURE CONSTITUTION",
-        "JETOS Language/Python",
-        "C for native code",
+        "JetOS Python",
+        "C for native runtime/kernel/ABI/hardware work",
         "New JETOS-owned C++ MUST NOT be introduced",
-        "A JETOS fork is not a frozen snapshot",
-        "Merge conflicts are architectural decisions",
-        'blindly choose "ours" or "theirs"',
-        "case by case",
-        "newest stable CPython",
-        "exact Linux kernel source corresponding to the running system",
-        "Source visibility and runtime visibility are distinct properties",
-        "one process-wide Global Interpreter Lock",
-        "individual bytes or bits",
-        "command-line/interactive JETOS Language control path",
-        "SAME JETOS version and source lineage",
-        "Fat Mode MUST be able to derive, build, and program/flash Skinny images",
-        "target application/capability set",
-        "canonical JETOS product artifact is a directly bootable image",
+        "A JETOS generation is a frozen source generation",
+        "MUST NOT follow external branches",
+        "command-line-first",
+        "Decaptor",
+        "gen2/manifest.json",
+        "MUST fail rather than silently",
+        "program launching",
+        "CPU",
+        "register",
+        "Source visibility does not imply unrestricted live-memory authority",
+        "Global Interpreter Lock",
+        "Fat Mode and Skinny Mode",
         "MUST NOT silently repartition",
-        "source -> build rule -> artifact -> installed file -> image",
-        "jailbreaking iPhone/iPad",
-        "implementation from proof",
-        "Performance decisions MUST be benchmark-informed",
+        "directly bootable",
+        "build debt",
+        "implementation from proof" if "implementation from proof" in text else "source review, structural tests, build success",
+        "Performance changes SHOULD be benchmark-informed",
     )
-
-    assert "README.md, AGENTS.txt" in text
-    assert "HTTP, DNS, a remote web server" in text
-
-    print("JETOS normative constitution: PASS")
+    assert "external runtime identity" in text
+    print("JETOS Gen2 normative constitution: PASS")
     return 0
 
 
