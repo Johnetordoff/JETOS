@@ -19,8 +19,8 @@ def require_source(source: Path) -> None:
     if missing:
         raise SystemExit("not a complete JetOS Python source tree; missing: " + ", ".join(missing))
     text = (source / "Python/sysmodule.c").read_text(encoding="utf-8")
-    if '#define NAME "jetos"' not in text:
-        raise SystemExit("JetOS Python source identity is not installed")
+    if '#define NAME "jetos"' not in text or "jetos_python_generation" not in text:
+        raise SystemExit("JetOS Python Gen2 source identity is not installed")
 
 
 def build(source: Path, build_dir: Path, prefix: Path, jobs: int) -> None:
@@ -41,8 +41,10 @@ def smoke(build_dir: Path) -> None:
     code = (
         "import sys; "
         "assert sys.implementation.name == 'jetos'; "
+        "assert sys.jetos_python_generation == 'Gen2'; "
         "assert not hasattr(sys, 'jetos_python_base_version'); "
-        "print('JetOS Python:', sys.version); "
+        "assert not hasattr(sys, 'jetos_language_version'); "
+        "print('JetOS Python Gen2:', sys.version); "
         "print('implementation:', sys.implementation.name)"
     )
     run([str(executable), "-c", code])
@@ -57,15 +59,15 @@ def install(build_dir: Path) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Build sealed JetOS Python")
     sub = parser.add_subparsers(dest="command", required=True)
-    build_parser = sub.add_parser("build")
-    build_parser.add_argument("source", type=Path)
-    build_parser.add_argument("--build", type=Path, required=True)
-    build_parser.add_argument("--prefix", type=Path, required=True)
-    build_parser.add_argument("--jobs", type=int, default=os.cpu_count() or 1)
-    smoke_parser = sub.add_parser("smoke")
-    smoke_parser.add_argument("--build", type=Path, required=True)
-    install_parser = sub.add_parser("install")
-    install_parser.add_argument("--build", type=Path, required=True)
+    b = sub.add_parser("build")
+    b.add_argument("source", type=Path)
+    b.add_argument("--build", type=Path, required=True)
+    b.add_argument("--prefix", type=Path, required=True)
+    b.add_argument("--jobs", type=int, default=os.cpu_count() or 1)
+    s = sub.add_parser("smoke")
+    s.add_argument("--build", type=Path, required=True)
+    i = sub.add_parser("install")
+    i.add_argument("--build", type=Path, required=True)
     args = parser.parse_args()
     if args.command == "build":
         build(args.source, args.build, args.prefix, args.jobs)
