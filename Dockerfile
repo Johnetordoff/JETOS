@@ -1,5 +1,7 @@
 FROM python:3.14.8-slim
 
+# Bootstrap/development container only. Gen2 runtime source is sealed separately
+# under gen2/vendor; this image is not the JETOS operating-system identity.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         git gcc make binutils libc6-dev bc bison flex \
@@ -33,6 +35,8 @@ RUN python tools/test_sources.py
 RUN python tools/test_modes.py
 RUN python tools/test_constitution.py
 RUN python tools/test_console.py
-RUN python tools/python_release.py check --offline-ok
+RUN python tools/test_gen2.py
 
+# No "latest release" network/freshness check is part of Gen2. The generation
+# changes only when JETOS deliberately admits and seals new source.
 CMD ["python", "jetos.py", "doctor"]
