@@ -6,6 +6,7 @@ import argparse
 import os
 from pathlib import Path
 import platform
+import shutil
 import subprocess
 import sys
 
@@ -17,6 +18,7 @@ from jetos import mode  # noqa: E402
 GEN2 = ROOT / "gen2" / "vendor"
 BUILD = ROOT / ".build"
 JETOS_KERNEL_SOURCE = GEN2 / "jetos-kernel"
+JETOS_KERNEL_WORK = BUILD / "jetos-kernel-work"
 JETOS_PYTHON_SOURCE = GEN2 / "jetos-python"
 JETOS_PYTHON_BUILD = BUILD / "jetos-python-build"
 JETOS_PYTHON_PREFIX = BUILD / "jetos-python-install"
@@ -39,7 +41,6 @@ def architecture() -> str:
 
 
 def verify_gen2() -> None:
-    """Refuse network/source fallback: a Gen2 boot requires a sealed local tree."""
     run([sys.executable, "tools/gen2.py", "verify"])
 
 
@@ -61,46 +62,48 @@ def runtime_paths() -> tuple[Path, Path]:
 def build_jetos_python() -> tuple[Path, Path]:
     installed = JETOS_PYTHON_PREFIX / "bin"
     if not installed.exists() or not list(installed.glob("python3.*")):
-        # language.py is JETOS-owned transformation/build orchestration.  Its input
-        # is the frozen JetOS Python tree; it performs no source fetch here.
         run([
-            sys.executable, "tools/language.py", "patch", str(JETOS_PYTHON_SOURCE),
-        ])
-        run([
-            sys.executable, "tools/language.py", "build", str(JETOS_PYTHON_SOURCE),
+            sys.executable, "tools/jetos_python.py", "build", str(JETOS_PYTHON_SOURCE),
             "--build", str(JETOS_PYTHON_BUILD), "--prefix", str(JETOS_PYTHON_PREFIX),
         ])
         run([
-            sys.executable, "tools/language.py", "smoke", "--build", str(JETOS_PYTHON_BUILD),
+            sys.executable, "tools/jetos_python.py", "smoke", "--build", str(JETOS_PYTHON_BUILD),
         ])
         run([
-            sys.executable, "tools/language.py", "install", "--build", str(JETOS_PYTHON_BUILD),
+            sys.executable, "tools/jetos_python.py", "install", "--build", str(JETOS_PYTHON_BUILD),
         ])
     return runtime_paths()
 
 
-def kernel_image(target_architecture: str) -> Path:
+def prepare_kernel_worktree() -> Path:
+    """Copy the sealed kernel source before configuration/build products are written."""
+    if JETOS_KERNEL_WORK.exists():
+        shutil.rmtree(JETOS_KERNEL_WORK)
+    shutil.copytree(JETOS_KERNEL_SOURCE, JETOS_KERNEL_WORK, symlinks=True)
+    return JETOS_KERNEL_WORK
+
+
+def kernel_image(source: Path, target_architecture: str) -> Path:
     if target_architecture == "x86_64":
-        return JETOS_KERNEL_SOURCE / "arch/x86/boot/bzImage"
-    return JETOS_KERNEL_SOURCE / "arch/arm64/boot/Image"
+        return source / "arch/x86/boot/bzImage"
+    return source / "arch/arm64/boot/Image"
 
 
 def build_kernel(target_architecture: str) -> Path:
-    image = kernel_image(target_architecture)
-    if not image.exists():
-        run([
-            sys.executable, "tools/build.py", "kernel", str(JETOS_KERNEL_SOURCE),
-            "--arch", target_architecture,
-        ])
-    return image
+    source = prepare_kernel_worktree()
+    run([
+        sys.executable, "tools/build.py", "kernel", str(source),
+        "--arch", target_architecture,
+    ])
+    return kernel_image(source, target_architecture)
 
 
 def tests() -> None:
     for script in (
-        "test.py", "test_unicode.py", "test_language.py", "test_bootstrap.py",
-        "test_desktop.py", "test_capabilities.py", "test_policy.py",
-        "test_interpreters.py", "test_storage.py", "test_storage_modes.py",
-        "test_sources.py", "test_modes.py", "test_constitution.py", "test_console.py",
+        "test.py", "test_unicode.py", "test_bootstrap.py", "test_desktop.py",
+        "test_capabilities.py", "test_policy.py", "test_interpreters.py",
+        "test_storage.py", "test_storage_modes.py", "test_sources.py",
+        "test_modes.py", "test_constitution.py", "test_console.py", "test_gen2.py",
     ):
         run([sys.executable, f"tools/{script}"])
 
@@ -124,6 +127,7 @@ def build_all(profile: str) -> tuple[Path, Path]:
     if canonical_mode == mode.SKINNY:
         size_command.append("--strict")
     run(size_command)
+    verify_gen2()
     return kernel, INITRAMFS
 
 
