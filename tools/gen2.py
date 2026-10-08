@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""JETOS Gen2 frozen-source intake, sealing, verification, and census."""
+"""JETOS Gen2 intake, seal verification, and source census."""
 from __future__ import annotations
 
 import argparse
@@ -14,26 +14,24 @@ ROOT = Path(__file__).resolve().parents[1]
 GEN2 = ROOT / "gen2"
 VENDOR = GEN2 / "vendor"
 MANIFEST = GEN2 / "manifest.json"
-SEED_ROOT = ROOT / "sources"
-
+SEEDS = ROOT / "sources"
 COMPONENTS = {
-    "jetos-python": (SEED_ROOT / "cpython", VENDOR / "jetos-python"),
-    "jetos-kernel": (SEED_ROOT / "linux", VENDOR / "jetos-kernel"),
+    "jetos-python": (SEEDS / "cpython", VENDOR / "jetos-python"),
+    "jetos-kernel": (SEEDS / "linux", VENDOR / "jetos-kernel"),
 }
-
 SKIP_PARTS = {".git", "__pycache__"}
 SKIP_SUFFIXES = {".pyc", ".pyo"}
 
 
-def digest(path: Path) -> str:
-    h = hashlib.sha256()
+def sha256(path: Path) -> str:
+    digest = hashlib.sha256()
     with path.open("rb") as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            h.update(chunk)
-    return h.hexdigest()
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
-def ordinary_files(root: Path):
+def files(root: Path):
     for path in sorted(root.rglob("*")):
         if not path.is_file() or path.is_symlink():
             continue
@@ -43,12 +41,12 @@ def ordinary_files(root: Path):
         yield path, rel
 
 
-def copy_component(source: Path, target: Path) -> None:
+def copy_seed(source: Path, target: Path) -> None:
     if not source.is_dir():
         raise SystemExit(
-            f"missing Gen2 intake seed: {source}\n"
-            "Materialize the one-time intake seed on the authorized development/controller "
-            "machine first; Gen2 build/boot never fetches it automatically."
+            f"missing one-time Gen2 intake seed: {source}\n"
+            "Materialize the seed on the authorized development/controller machine first. "
+            "Sealed Gen2 never fetches source during build or boot."
         )
     if target.exists():
         shutil.rmtree(target)
@@ -62,81 +60,82 @@ def copy_component(source: Path, target: Path) -> None:
 
 
 def internalize_jetos_python(source: Path) -> None:
-    """Turn the admitted Python seed into JetOS Python before the Gen2 seal."""
+    """Install the Gen2-native JetOS Python identity before source is sealed."""
     sysmodule = source / "Python/sysmodule.c"
     if not sysmodule.is_file():
         raise SystemExit("JetOS Python intake is missing Python/sysmodule.c")
     text = sysmodule.read_text(encoding="utf-8")
-    if '#define NAME "cpython"' in text:
-        text = text.replace('#define NAME "cpython"', '#define NAME "jetos"', 1)
+    text = text.replace('#define NAME "cpython"', '#define NAME "jetos"', 1)
     if '#define NAME "jetos"' not in text:
         raise SystemExit("could not install JetOS Python implementation identity")
 
-    # Remove old seed-identity runtime fields if the legacy intake tooling added them.
+    # Remove legacy seed-identity runtime fields.
     text = "\n".join(
         line for line in text.splitlines()
         if "jetos_python_base_version" not in line
+        and "jetos_language_version" not in line
     ) + "\n"
-    include_line = '#include "jetos.h"          // JETOS Language identity'
-    if include_line not in text:
-        python_include = '#include "Python.h"'
+
+    python_include = '#include "Python.h"'
+    include_line = '#include "jetos.h"          // JetOS Python identity'
+    # Normalize an older JETOS include comment if one exists.
+    text = text.replace(
+        '#include "jetos.h"          // JETOS Language identity',
+        include_line,
+    )
+    if '#include "jetos.h"' not in text:
         if python_include not in text:
-            raise SystemExit("could not locate Python.h include for JetOS Python identity")
+            raise SystemExit("could not locate Python.h include for JetOS Python")
         text = text.replace(python_include, python_include + "\n" + include_line, 1)
+
+    marker = '    SET_SYS_FROM_STRING("version", Py_GetVersion());'
+    generation_line = '    SET_SYS_FROM_STRING("jetos_python_generation", JETOS_PYTHON_GENERATION);'
+    if generation_line not in text:
+        if marker not in text:
+            raise SystemExit("could not locate sys.version initialization")
+        text = text.replace(marker, marker + "\n" + generation_line, 1)
     sysmodule.write_text(text, encoding="utf-8")
 
-    header = source / "Include/jetos.h"
-    header.write_text(
+    (source / "Include/jetos.h").write_text(
         "#ifndef Py_JETOS_H\n"
         "#define Py_JETOS_H\n\n"
-        "/* JetOS Python identity. Historical intake provenance is not runtime identity. */\n"
+        "/* JetOS Python Gen2 identity. */\n"
         '#define JETOS_PYTHON_GENERATION "Gen2"\n'
         "\n#endif /* Py_JETOS_H */\n",
         encoding="utf-8",
     )
 
 
-def build_manifest() -> dict[str, object]:
+def manifest_data() -> dict[str, object]:
     rows: list[dict[str, object]] = []
-    components: dict[str, dict[str, object]] = {}
+    summary: dict[str, dict[str, int]] = {}
     for name, (_, root) in COMPONENTS.items():
-        count = 0
-        size = 0
         if not root.is_dir():
-            raise SystemExit(f"Gen2 component is missing: {root}")
-        for path, rel in ordinary_files(root):
-            stat = path.stat()
-            rows.append({
-                "component": name,
-                "path": rel.as_posix(),
-                "bytes": stat.st_size,
-                "sha256": digest(path),
-            })
+            raise SystemExit(f"Gen2 component missing: {root}")
+        count = total = 0
+        for path, rel in files(root):
+            size = path.stat().st_size
+            rows.append({"component": name, "path": rel.as_posix(), "bytes": size, "sha256": sha256(path)})
             count += 1
-            size += stat.st_size
-        components[name] = {"files": count, "bytes": size}
+            total += size
+        summary[name] = {"files": count, "bytes": total}
     return {
         "format": "jetos-gen2-manifest-v1",
         "generation": "Gen2",
         "sealed_ts": time.time(),
-        "components": components,
+        "components": summary,
         "files": rows,
     }
 
 
-def write_manifest(payload: dict[str, object]) -> None:
-    GEN2.mkdir(parents=True, exist_ok=True)
-    MANIFEST.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-
-
 def intake() -> None:
-    for _, (source, target) in COMPONENTS.items():
-        copy_component(source, target)
+    for source, target in COMPONENTS.values():
+        copy_seed(source, target)
     internalize_jetos_python(VENDOR / "jetos-python")
-    payload = build_manifest()
-    write_manifest(payload)
+    GEN2.mkdir(parents=True, exist_ok=True)
+    payload = manifest_data()
+    MANIFEST.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print("JETOS Gen2 source intake sealed.")
-    print(f"  manifest: {MANIFEST}")
     for name, info in payload["components"].items():
         print(f"  {name}: {info['files']:,} files, {info['bytes']:,} bytes")
 
@@ -144,63 +143,55 @@ def intake() -> None:
 def load_manifest() -> dict[str, object]:
     if not MANIFEST.is_file():
         raise SystemExit("Gen2 is not sealed: gen2/manifest.json is missing")
-    value = json.loads(MANIFEST.read_text(encoding="utf-8"))
-    if value.get("format") != "jetos-gen2-manifest-v1":
+    payload = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    if payload.get("format") != "jetos-gen2-manifest-v1":
         raise SystemExit("unsupported Gen2 manifest format")
-    return value
+    return payload
 
 
 def verify() -> None:
     payload = load_manifest()
-    expected = payload.get("files")
-    if not isinstance(expected, list):
-        raise SystemExit("invalid Gen2 manifest file list")
-    failures: list[str] = []
-    seen: set[tuple[str, str]] = set()
+    rows = payload.get("files")
+    if not isinstance(rows, list):
+        raise SystemExit("invalid Gen2 manifest")
     roots = {name: target for name, (_, target) in COMPONENTS.items()}
-    for row in expected:
+    expected: set[tuple[str, str]] = set()
+    failures: list[str] = []
+    for row in rows:
         if not isinstance(row, dict):
             failures.append("invalid manifest row")
             continue
-        component = str(row.get("component") or "")
-        relative = str(row.get("path") or "")
-        seen.add((component, relative))
-        root = roots.get(component)
-        if root is None:
-            failures.append(f"unknown component {component}")
-            continue
-        path = root / relative
-        if not path.is_file():
-            failures.append(f"missing {component}/{relative}")
-            continue
-        stat = path.stat()
-        if stat.st_size != int(row.get("bytes") or -1):
-            failures.append(f"size changed {component}/{relative}")
-            continue
-        if digest(path) != row.get("sha256"):
-            failures.append(f"hash changed {component}/{relative}")
-    for component, root in roots.items():
+        name = str(row.get("component") or "")
+        rel = str(row.get("path") or "")
+        expected.add((name, rel))
+        root = roots.get(name)
+        path = root / rel if root else None
+        if path is None or not path.is_file():
+            failures.append(f"missing {name}/{rel}")
+        elif path.stat().st_size != int(row.get("bytes") or -1):
+            failures.append(f"size changed {name}/{rel}")
+        elif sha256(path) != row.get("sha256"):
+            failures.append(f"hash changed {name}/{rel}")
+    for name, root in roots.items():
         if not root.is_dir():
-            failures.append(f"component missing {component}")
+            failures.append(f"component missing {name}")
             continue
-        for _, rel in ordinary_files(root):
-            if (component, rel.as_posix()) not in seen:
-                failures.append(f"unsealed file {component}/{rel.as_posix()}")
+        for _, rel in files(root):
+            if (name, rel.as_posix()) not in expected:
+                failures.append(f"unsealed file {name}/{rel.as_posix()}")
     if failures:
         raise SystemExit("Gen2 verification FAILED:\n  " + "\n  ".join(failures[:100]))
-    print(f"JETOS Gen2 verification: PASS ({len(expected):,} sealed files)")
+    print(f"JETOS Gen2 verification: PASS ({len(rows):,} sealed files)")
 
 
 def census() -> None:
     verify()
-    suffixes: Counter[str] = Counter()
-    total = 0
-    for _, (_, root) in COMPONENTS.items():
-        for path, _ in ordinary_files(root):
-            suffixes[path.suffix if path.suffix else "[no extension]"] += 1
-            total += 1
-    print(f"Gen2 source files: {total:,}")
-    for suffix, count in suffixes.most_common():
+    counts: Counter[str] = Counter()
+    for _, root in COMPONENTS.values():
+        for path, _ in files(root):
+            counts[path.suffix or "[no extension]"] += 1
+    print(f"Gen2 source files: {sum(counts.values()):,}")
+    for suffix, count in counts.most_common():
         print(f"  {suffix}: {count:,}")
 
 
@@ -216,19 +207,12 @@ def status() -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="JETOS Gen2 frozen source manager")
     sub = parser.add_subparsers(dest="command", required=True)
-    sub.add_parser("intake", help="copy the current intake seeds into Gen2, internalize them, and seal")
-    sub.add_parser("verify", help="verify every frozen Gen2 file")
-    sub.add_parser("status", help="show Gen2 source presence and seal state")
-    sub.add_parser("census", help="verify and count Gen2 source files by type")
+    sub.add_parser("intake")
+    sub.add_parser("verify")
+    sub.add_parser("status")
+    sub.add_parser("census")
     args = parser.parse_args()
-    if args.command == "intake":
-        intake()
-    elif args.command == "verify":
-        verify()
-    elif args.command == "status":
-        status()
-    elif args.command == "census":
-        census()
+    {"intake": intake, "verify": verify, "status": status, "census": census}[args.command]()
     return 0
 
 
