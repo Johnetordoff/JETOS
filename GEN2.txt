@@ -1,62 +1,86 @@
-JETOS GEN2 — FROZEN SOURCE GENERATION
+JETOS GEN2 — FROZEN INTERNAL SOURCE GENERATION
 
 Status: active development generation
-Primary milestone: boot to a real JETOS command line from frozen local source inputs.
+Primary milestone: boot to a real JETOS command line from sealed local JETOS source.
+
+THIS FILE OVERRIDES OLDER ROLLING-UPSTREAM LANGUAGE FOR GEN2.
 
 1. GEN2 IS A FROZEN GENERATION
 
-Gen2 is not a rolling collection of upstream dependencies. A component enters Gen2 only when a specific version of that component is deliberately admitted and its files are copied into the Gen2 source tree. Once admitted, JETOS treats those bytes as Gen2 source. Normal Gen2 builds MUST NOT fetch a newer upstream version, follow a branch, or silently replace those files.
+Gen2 is not a dependency graph and it is not a collection of live forks. A component enters Gen2 when a selected source snapshot is copied into the Gen2 tree, source-repository metadata is removed, and the resulting ordinary files are sealed in the Gen2 manifest.
 
-If Gen2 later needs a capability that comes from an upstream project, the required version of that component must first be admitted to Gen2. A later upstream release is not an update to Gen2 until its exact files are deliberately imported as a new Gen2 component revision and the Gen2 manifest is regenerated and reviewed.
+After intake, those files are JETOS source. Normal Gen2 build, boot, test, diagnostic, and user-facing code MUST NOT consult an upstream branch, release feed, package version, or remote repository to decide what Gen2 contains.
 
-2. SOURCE INTAKE
+If Gen2 later needs a capability, the exact implementation required for that capability is admitted into Gen2 first. The existing Gen2 remains frozen until that deliberate intake is reviewed and the manifest is resealed.
 
-The canonical frozen tree is:
+Historical origin and license/provenance facts may be retained in a sealed archival provenance record. They are evidence about how a source snapshot arrived; they are not active dependency relationships and should not be used as the runtime identity of the component.
 
-  gen2/vendor/
+2. ACTIVE GEN2 IDENTITIES
 
-The initial command-line generation freezes:
+The canonical frozen source tree is:
 
-  gen2/vendor/linux     Linux 6.12.96 at commit 6d15a1029d425b15c59463910ebdccc4afe760d6
-  gen2/vendor/cpython   JETOS Language / CPython 3.14.8 base at commit 8e6e75d9102e39bed2a2b279203a396741180f12
+  gen2/vendor/jetos-python
+  gen2/vendor/jetos-kernel
 
-The intake process may use networking on the development/controller machine to acquire the pinned source once. It then copies ordinary source files into gen2/vendor and deliberately discards the source repository's .git metadata. The frozen Gen2 tree is subsequently verified by file path, size, and SHA-256 digest.
+The Python implementation is called **JetOS Python**. Its historical seed does not define its present identity. JetOS Python is an editable JETOS operating-system component and will diverge deliberately over time.
 
-Upstream names, versions, URLs, commits, and licensing/provenance information remain recorded as historical facts. They do not create a live update relationship.
+The native/kernel implementation is called **JETOS kernel source** inside Gen2. Architecture-specific CPU setup, registers, traps, interrupts, memory management, scheduler machinery, drivers, and boot code become inspectable Gen2 files when this source is admitted.
 
-3. COMMAND-LINE MILESTONE
+3. LANGUAGE CONSTITUTION
 
-Gen2's first required runnable proof is:
+JETOS has two implementation languages:
+
+  JetOS Python — high-level operating-system policy, shell, services, orchestration,
+                 applications, introspection, and user-programmable behavior.
+
+  C            — native operating-system implementation, runtime machinery,
+                 hardware/ABI boundaries, measured primitives, and the large body
+                 of native implementation beneath JetOS Python.
+
+Assembly is allowed only where the architecture actually requires it.
+
+C++ is migration debt. Gen2 MUST NOT add new JETOS-owned C++ as a preferred implementation. C++ admitted inside a frozen source snapshot remains visible debt to replace incrementally with readable C or JetOS Python while preserving behavior and tests.
+
+4. COMMAND-LINE-FIRST OPERATING SYSTEM
+
+The current Gen2 product target is intentionally similar in spirit to a classic DOS-era command-line operating environment: a small, direct command terminal that boots reliably, exposes files and machine state, and launches applications.
+
+A successful Gen2 CLI proof is:
 
   firmware / hypervisor
-      -> frozen Gen2 Linux kernel
+      -> JETOS kernel
       -> Gen2 initramfs
-      -> JETOS Python PID 1
-      -> JETOS Language interactive command line
+      -> JetOS Python PID 1 / supervisor
+      -> JETOS interactive command line
+      -> launch and control programs
 
-The command line must be the real JETOS boot path, not a host-side imitation. For the current VM proof, QEMU may remain development infrastructure. Network is disabled in the guest by default.
+The command line must be the real JETOS boot path, not a host-side imitation. Network is not required for this milestone and remains disabled in the VM by default.
 
-The Linux source carries the architecture-specific CPU, register, exception, interrupt, MMU, scheduler, memory, driver, and boot machinery that is currently absent from the small JETOS-authored wrapper tree. Once Linux is frozen into gen2/vendor/linux, those implementation files are locally inspectable Gen2 source rather than an external source reference.
+5. DECAPTOR UI BOUNDARY
 
-4. BUILD RULE
+Graphical desktop/window/interface behavior is not required to prove the Gen2 command-line operating system. The separate graphical/interface layer is called **Decaptor**.
+
+Gen2 should keep command-line and application-launch capability independent of Decaptor. Decaptor may consume JETOS capability APIs later, but the kernel, JetOS Python supervisor, filesystem view, diagnostics, and application launcher must remain useful without a graphical interface.
+
+6. SEALED BUILD RULE
 
 A Gen2 build must:
 
-  a. verify gen2/manifest.json against the frozen tree;
-  b. refuse to fetch missing source while in sealed mode;
-  c. build JETOS Language from gen2/vendor/cpython;
-  d. build the kernel from gen2/vendor/linux;
+  a. verify gen2/manifest.json against the frozen local tree;
+  b. refuse to fetch missing source during build or boot;
+  c. build JetOS Python from gen2/vendor/jetos-python;
+  d. build the JETOS kernel from gen2/vendor/jetos-kernel;
   e. build the JETOS root filesystem and initramfs;
   f. boot the resulting kernel/initramfs to the serial JETOS command line.
 
-Generated build products remain under .build/ and are not themselves source-of-truth.
+Generated products remain under .build/ and are not source-of-truth.
 
-5. SOURCE COMPLETENESS
+7. SOURCE COMPLETENESS
 
-The first Gen2 command-line milestone does not claim every build tool or native library is already frozen. The intake/status tooling must report remaining host/build-environment dependencies explicitly. Those are Gen2 source-debt items to be admitted one at a time instead of being hidden.
+The first Gen2 CLI milestone does not claim every compiler, linker, libc/native library, or build utility is already internalized. Any remaining host/build-environment requirement must be reported explicitly as Gen2 source debt.
 
-The first priority is a repeatable command-line boot. After that, Gen2 expands by admitting the exact components needed for storage, graphics, networking, audio, hardware-specific support, and additional runtime facilities.
+The next step for each debt item is not to create a permanent package dependency. It is to admit the needed implementation into Gen2, make its relevant raw files inspectable, and then move JETOS-owned behavior away from outside frameworks over time.
 
-6. NO SILENT UPSTREAM MAINTENANCE
+8. NO AUTOMATIC EXTERNAL MAINTENANCE
 
-Gen2 never updates because Python, Linux, GCC, a distribution, or another project publishes something. JETOS developers may inspect newer work and choose to import it, but the existing Gen2 generation remains frozen until a deliberate Gen2 change is reviewed.
+No external organization chooses a Gen2 update by releasing a new version. JETOS may inspect outside work and deliberately admit useful ideas or files, but Gen2 changes only through JETOS review and a new sealed manifest.
