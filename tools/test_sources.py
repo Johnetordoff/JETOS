@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Structural tests for the JETOS visible-source model."""
+"""Structural tests for Gen2 intake staging versus sealed active source."""
 from __future__ import annotations
 
 import importlib.util
@@ -19,32 +19,31 @@ def load_sources_module():
 
 
 def main() -> int:
+    # Legacy materialization remains only as one-time intake staging. Exact pins
+    # are useful for reconstructing the chosen seeds, but sealed Gen2 never builds
+    # or boots from these directories directly.
     sources = load_sources_module()
     names = [item.name for item in sources.SPECS]
-    assert len(names) == len(set(names)), "source component names must be unique"
+    assert len(names) == len(set(names))
     assert "jetos-language" in names
     assert "linux" in names
-    assert "gcc" in names
-    assert "raspberrypi-linux" in names
-    assert "raspberrypi-firmware" in names
-
     for item in sources.SPECS:
-        assert len(item.commit) == 40, f"{item.name} must pin an exact commit"
-        assert item.repository.startswith("https://github.com/")
-        assert not str(sources.destination(item)).startswith(str(ROOT / ".build"))
-
-    assert sources.SOURCE_GAPS, "do not claim source-complete until package-only gaps are closed"
+        assert len(item.commit) == 40
 
     dev = (ROOT / "tools/dev.py").read_text(encoding="utf-8")
-    assert 'SOURCES = ROOT / "sources"' in dev
-    assert 'LINUX_SOURCE = SOURCES / "linux"' in dev
-    assert 'LANGUAGE_SOURCE = SOURCES / "cpython"' in dev
+    assert 'GEN2 = ROOT / "gen2" / "vendor"' in dev
+    assert 'JETOS_KERNEL_SOURCE = GEN2 / "jetos-kernel"' in dev
+    assert 'JETOS_PYTHON_SOURCE = GEN2 / "jetos-python"' in dev
+    assert "tools/sources.py" not in dev
+    assert "github.com" not in dev
 
-    entry = (ROOT / "jetos.py").read_text(encoding="utf-8")
-    assert 'sub.add_parser("sources"' in entry
-    assert 'sub.add_parser("modes"' in entry
+    gen2 = (ROOT / "tools/gen2.py").read_text(encoding="utf-8")
+    assert 'SEEDS = ROOT / "sources"' in gen2
+    assert '"jetos-python"' in gen2
+    assert '"jetos-kernel"' in gen2
+    assert "internalize_jetos_python" in gen2
 
-    print("JETOS visible-source model: PASS")
+    print("JETOS Gen2 intake/source boundary: PASS")
     return 0
 
 

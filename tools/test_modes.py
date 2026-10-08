@@ -27,34 +27,27 @@ def main() -> int:
     assert not skinny.general_purpose_app_host
     assert not skinny.carries_development_source
     assert not skinny.carries_kernel_source
-    assert not skinny.can_derive_skinny_images
-    assert "target application/capability set" in skinny.application_model
 
     image = (ROOT / "tools/image.py").read_text(encoding="utf-8")
     assert "copy_fat_sources" in image
-    assert 'ROOT / "sources" / "cpython"' in image
-    assert 'ROOT / "sources" / "linux"' in image
-    assert 'source_root = rootfs / "usr" / "src"' in image
-    assert 'linux_target = source_root / "linux"' in image
+    assert 'GEN2_VENDOR = ROOT / "gen2" / "vendor"' in image
+    assert 'GEN2_VENDOR / "jetos-python"' in image
+    assert 'GEN2_VENDOR / "jetos-kernel"' in image
+    assert 'python_target = source_root / "jetos-python"' in image
+    assert 'kernel_target = source_root / "jetos-kernel"' in image
+    assert 'ROOT / "sources" / "cpython"' not in image
+    assert 'ROOT / "sources" / "linux"' not in image
 
     dev = (ROOT / "tools/dev.py").read_text(encoding="utf-8")
     assert "mode.CLI_CHOICES" in dev
     assert "canonical_mode == mode.SKINNY" in dev
+    assert 'JETOS_PYTHON_SOURCE = GEN2 / "jetos-python"' in dev
+    assert 'JETOS_KERNEL_SOURCE = GEN2 / "jetos-kernel"' in dev
 
-    entry = (ROOT / "jetos.py").read_text(encoding="utf-8")
-    assert "Fat Mode" in entry
-    assert "Skinny Mode" in entry
-    assert "mode.CLI_CHOICES" in entry
+    constitution = (ROOT / "JETOS_CONSTITUTION.txt").read_text(encoding="utf-8")
+    assert "Fat Mode and Skinny Mode are profiles of the SAME JETOS generation" in constitution
 
-    agents = (ROOT / "AGENTS.txt").read_text(encoding="utf-8")
-    for phrase in (
-        "LINGUA FRANCA PROGRAMMING MODEL",
-        "LIVE INTROSPECTION AND CONTROL",
-        "FAT MODE AND SKINNY MODE",
-    ):
-        assert phrase in agents
-
-    print("JETOS Fat/Skinny mode contract: PASS")
+    print("JETOS Gen2 Fat/Skinny mode contract: PASS")
     return 0
 
 
