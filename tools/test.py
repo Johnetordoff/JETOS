@@ -40,6 +40,7 @@ def build_and_run(name: str, extra_flags: list[str]) -> None:
 
 def main() -> int:
     run(sys.executable, "-m", "compileall", "-q", "src", "tools")
+    run(sys.executable, "tools/test_architectures.py")
     env = os.environ.copy()
     env["PYTHONPATH"] = str(ROOT / "src")
     run(
