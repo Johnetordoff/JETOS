@@ -65,23 +65,25 @@ def main() -> int:
         if not ok:
             failures.append((f"import {name}", detail))
 
+    probe_total = probe_passed = 0
     probe_failures: list[tuple[str, str]] = []
     if not args.modules:
-        for name, code in PROBES.items():
-            ok, detail = check(code)
-            print(f"{'PASS' if ok else 'FAIL'} capability {name}" + (f": {detail}" if detail else ""))
-            if not ok:
-                probe_failures.append((name, detail))
+        probes = dict(PROBES)
         if args.online:
-            ok, detail = check(ONLINE, timeout=15)
-            print(f"{'PASS' if ok else 'FAIL'} capability online-https" + (f": {detail}" if detail else ""))
-            if not ok:
-                probe_failures.append(("online-https", detail))
+            probes["online-https"] = ONLINE
+        for name, code in probes.items():
+            probe_total += 1
+            ok, detail = check(code, timeout=15 if name == "online-https" else 10)
+            print(f"{'PASS' if ok else 'FAIL'} capability {name}" + (f": {detail}" if detail else ""))
+            if ok:
+                probe_passed += 1
+            else:
+                probe_failures.append((name, detail))
 
     total_failures = failures + probe_failures
     print(
         f"Python 3.14 stdlib census: {len(modules) - len(failures)}/{len(modules)} imports; "
-        f"{len(PROBES) - len(probe_failures)}/{len(PROBES)} native probes"
+        f"{probe_passed}/{probe_total} capability probes"
     )
     return int(args.strict and bool(total_failures))
 
