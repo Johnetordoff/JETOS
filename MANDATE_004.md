@@ -1,4 +1,4 @@
-# Mandate 004 — Developer One Hyper Mandate: Python-first architecture, authorized AI APIs, and JetOS goals
+# Mandate 004 — Developer One Hyper Mandate: Python-first architecture, authorized AI APIs, JetOS goals, and dual-architecture support
 
 Status: **active, permanent, HYPER MANDATE**
 Issued by: **Developer One** (the repository owner), 2026-10-10.
@@ -6,11 +6,32 @@ Scope: **JetOS and every Brain Clone, Mac Brain, Digital Yamin, worker, agent ru
 
 ## JetOS is first-class architecture
 
-JetOS is not an incidental repository. Any agent or runtime doing system-level work that may affect JetOS must first familiarize itself with the current `README.md` and relevant live JetOS source/docs and preserve the actual goals stated there.
+JetOS is not an incidental repository. Any agent or runtime doing system-level work that may affect JetOS must first familiarize itself with the current `README.md`, `ARCHITECTURES.md`, and relevant live JetOS source/docs and preserve the actual goals stated there.
 
 Agents must distinguish implemented JetOS behavior from planned architecture and must not describe planned capabilities as already working. Familiarity must be refreshed when JetOS materially changes.
 
 Core JetOS goals include a source-oriented, Python-first operating system that can ultimately replace the software stack on a target machine; own/select its boot path; discover capabilities; install only what a device role requires; control enabled machine capabilities through explicit policy; use its own early userspace and Python control plane; account for provenance/dependencies/exceptions; and remain reproducibly rebuildable from pinned source inputs.
+
+## Dual-architecture constitution
+
+**JetOS must support both x86-64 and ARM64/AArch64 as first-class CPU targets.** Neither architecture is a compatibility afterthought, experimental side port, or separate operating system.
+
+There is one JetOS above the architecture boundary. Shared Python control logic, policy, capability modeling, package/image logic, provenance, tests, public behavior, and system concepts must remain common wherever technically possible.
+
+Architecture-specific divergence is allowed only where the machine genuinely requires it, including kernel architecture/configuration, firmware and boot handoff, kernel image format, QEMU machine/console details, device tree or ACPI handling, board/device profiles, and unavoidable C/assembly/native substrate.
+
+The two canonical target names are:
+
+- `x86_64` for 64-bit x86/AMD64 systems;
+- `arm64` for AArch64/ARM64 systems.
+
+Common aliases may be accepted at interfaces, but internal architecture decisions should normalize to these names.
+
+A JetOS image must never knowingly mix kernel and userspace architectures. An ARM64 kernel requires ARM64 userspace; an x86-64 kernel requires x86-64 userspace. The current rootfs builder copies CPython and native libraries from its build environment, so until explicit cross-userspace construction is implemented, rootfs/initramfs assembly must occur in a matching target-native environment or use a verified target-native runtime source.
+
+Changes to shared JetOS logic must preserve both architecture targets unless the change is explicitly and correctly isolated to one architecture-specific boundary. Fast repository tests must continuously exercise both target definitions. Physical-board support remains a device-profile layer on top of CPU architecture; supporting ARM64 does not automatically mean every ARM64 board is bootable without its firmware/device-tree/peripheral work.
+
+Additional CPU architectures are not implicitly in scope. Expanding beyond x86-64 and ARM64/AArch64 requires an explicit Developer One decision.
 
 ## Python-first language constitution
 
@@ -52,6 +73,8 @@ Implement the smallest practical amount of clear code necessary. Reduce logical/
 
 Reuse shared behavior everywhere except intentional business-logic divergence points that must be able to change independently later. Non-business-logic duplication is unacceptable by default.
 
+Architecture support follows the same rule: do not duplicate JetOS wholesale for x86-64 and ARM64. Reuse one implementation and isolate only the genuinely architecture-specific pieces.
+
 ## Authorized AI API integrations
 
 Governed systems should maintain and improve first-class API connectivity for authorized providers including:
@@ -76,6 +99,6 @@ Use documented public HTTP APIs directly where practical; keep shared transport/
 
 ## Cross-system rule
 
-Brain Clone, Mac Brain, Digital Yamin workers, JetOS, and future compatible systems must preserve this language/dependency/API architecture when they integrate with one another. A cross-system integration must not introduce a forbidden language, Node toolchain, hidden dependency ecosystem, or vendor SDK merely because another subsystem uses one.
+Brain Clone, Mac Brain, Digital Yamin workers, JetOS, and future compatible systems must preserve this language/dependency/API/architecture policy when they integrate with one another. A cross-system integration must not introduce a forbidden language, Node toolchain, hidden dependency ecosystem, vendor SDK, or architecture-specific duplicate stack merely because another subsystem uses one.
 
 This mandate does not loosen privacy, containment, provenance, reproducibility, machine-safety, default-deny networking, or JetOS's existing native-boundary rules.
