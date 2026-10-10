@@ -60,6 +60,10 @@ def _type(args: list[str]) -> None:
         print(f"{path}: binary/non-UTF-8 file")
 
 
+def _echo(args: list[str]) -> None:
+    print(" ".join(args))
+
+
 def _run(args: list[str]) -> None:
     if not args:
         print("RUN requires a program path or executable name")
@@ -108,6 +112,7 @@ def _help(args: list[str]) -> None:
   CD [path]                change/show current directory
   PWD                      show current directory
   TYPE file / CAT file     display a UTF-8 text file
+  ECHO [text...]           print text
   RUN program [args...]    launch a program directly
   PYTHON [args...]         enter JetOS Python, or run JetOS Python arguments
   SYSTEM                   show operating-system/runtime information
@@ -142,6 +147,7 @@ def execute(line: str, *, namespace: dict[str, object], user: UserIdentity) -> N
         "PWD": _pwd,
         "TYPE": _type,
         "CAT": _type,
+        "ECHO": _echo,
         "RUN": _run,
         "HELP": _help,
         "?": _help,
