@@ -18,11 +18,13 @@ IMPORT = (
 PROBES = {
     "compression": "import bz2,lzma,zlib; d=b'jetos'; assert bz2.decompress(bz2.compress(d))==d and lzma.decompress(lzma.compress(d))==d and zlib.decompress(zlib.compress(d))==d",
     "ctypes": "import ctypes; assert ctypes.CDLL(None)",
-    "dbm": "import dbm,tempfile; p=tempfile.mktemp(); d=dbm.open(p,'c'); d[b'x']=b'y'; assert d[b'x']==b'y'; d.close()",
+    "curses": "import curses,os; os.environ.setdefault('TERM','xterm'); curses.setupterm()",
+    "dbm": "import dbm,tempfile,pathlib; t=tempfile.TemporaryDirectory(); p=str(pathlib.Path(t.name)/'db'); d=dbm.open(p,'c'); d[b'x']=b'y'; assert d[b'x']==b'y'; d.close(); t.cleanup()",
     "hashing": "import hashlib; assert hashlib.sha256(b'jetos').digest()",
     "mmap": "import mmap; m=mmap.mmap(-1,4096); m[:5]=b'jetos'; assert m[:5]==b'jetos'; m.close()",
+    "pty": "import os,pty; a,b=pty.openpty(); os.close(a); os.close(b)",
     "selectors": "import selectors; s=selectors.DefaultSelector(); s.close()",
-    "socket": "import socket; s=socket.socket(); s.bind(('127.0.0.1',0)); s.close()",
+    "socket": "import socket; assert socket.has_ipv6; socket.getaddrinfo('localhost',0); a=socket.socket(); a.bind(('127.0.0.1',0)); a.close(); b=socket.socket(socket.AF_INET6); b.bind(('::1',0)); b.close()",
     "sqlite3": "import sqlite3; c=sqlite3.connect(':memory:'); assert c.execute('select 1').fetchone()==(1,); c.close()",
     "ssl": "import ssl; assert ssl.OPENSSL_VERSION and ssl.create_default_context()",
     "subprocess": "import subprocess,sys; subprocess.run([sys.executable,'-c','pass'],check=True)",
@@ -47,6 +49,11 @@ def check(code: str, *args: str, timeout: int = 10) -> tuple[bool, str]:
     return result.returncode == 0, (text[-1] if text else "")
 
 
+def show(kind: str, name: str, ok: bool, detail: str) -> None:
+    suffix = f": {detail}" if not ok and detail else ""
+    print(f"{'PASS' if ok else 'FAIL'} {kind} {name}{suffix}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Audit Python 3.14 stdlib against its OS substrate")
     parser.add_argument("--online", action="store_true", help="also require DNS/TLS/HTTPS Internet access")
@@ -61,7 +68,7 @@ def main() -> int:
     failures: list[tuple[str, str]] = []
     for name in modules:
         ok, detail = check(IMPORT, name)
-        print(f"{'PASS' if ok else 'FAIL'} import {name}" + (f": {detail}" if detail else ""))
+        show("import", name, ok, detail)
         if not ok:
             failures.append((f"import {name}", detail))
 
@@ -74,7 +81,7 @@ def main() -> int:
         for name, code in probes.items():
             probe_total += 1
             ok, detail = check(code, timeout=15 if name == "online-https" else 10)
-            print(f"{'PASS' if ok else 'FAIL'} capability {name}" + (f": {detail}" if detail else ""))
+            show("capability", name, ok, detail)
             if ok:
                 probe_passed += 1
             else:
