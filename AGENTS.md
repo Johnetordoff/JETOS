@@ -5,6 +5,9 @@ Before changing JetOS, read:
 1. `README.md` — current JetOS goals, implemented state, planned architecture, language constitution, native boundaries, capability model, provenance, and reproducibility goals.
 2. `ARCHITECTURES.md` — the first-class dual-architecture contract for x86-64 and ARM64/AArch64, including the rule that one shared JetOS exists above isolated machine-specific boundaries.
 3. `MANDATE_004.md` — Developer One's active permanent Hyper Mandate covering Python-first implementation, zero/minimal dependencies, no Node.js, API-first authorized AI integrations, JetOS familiarity, source reuse/minimization, dual-architecture support, and the explicit xAI/Grok prohibition.
+4. `MANDATE_004D_UNUSED_CODE_RETIREMENT.md` — Developer One's permanent Super Directive requiring evidence-confirmed unused project-owned code to be retired eventually and every non-use deletion to be recorded in `AGENT_DELETION_CHANGELOG.md`.
+
+Before recreating, restoring, or replacing behavior that may have existed previously, read `AGENT_DELETION_CHANGELOG.md` and inspect the relevant native Git history first.
 
 Do not rely on a stale summary when these files have materially changed.
 
