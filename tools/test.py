@@ -58,6 +58,7 @@ def main() -> int:
     run(sys.executable, "tools/test_architectures.py")
     run(sys.executable, "tools/test_package.py")
     run(sys.executable, "tools/test_kernel_codesign_baseline.py")
+    run(sys.executable, "tools/test_docker_contract.py")
     env = os.environ.copy()
     env["PYTHONPATH"] = str(ROOT / "src")
     run(
