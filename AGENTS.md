@@ -8,6 +8,7 @@ Before changing JetOS, read:
 4. `MANDATE_004.md` — Developer One's active permanent Hyper Mandate covering Python-first implementation, zero/minimal dependencies, no Node.js, API-first authorized AI integrations, JetOS familiarity, source reuse/minimization, multi-architecture support, the HC1 physical target, and the explicit xAI/Grok prohibition.
 5. `MANDATE_004D_UNUSED_CODE_RETIREMENT.md` — Developer One's permanent Super Directive requiring evidence-confirmed unused project-owned code to be retired eventually and every non-use deletion to be recorded in `AGENT_DELETION_CHANGELOG.md`.
 6. `MANDATE_004E_INFORMATION_LIFECYCLE.md` — Developer One's permanent sub-hyper-mandate requiring an Information Lifecycle Worker that tracks provenance, validity/freshness, dependencies, expiry or invalidation rules, and refresh/replacement procedures for important JetOS information, including pre-expiry credential lifecycle coverage without storing secret values.
+7. `MANDATE_004F_CUTTING_ROOM_STORAGE.md` — Developer One's permanent sub-hyper-mandate establishing that JETOS is the **cutting room, not the archive**: keep the smallest practical active/staging/derived working set, retain compact provenance/lifecycle/archive-reference metadata, and do not accumulate bulk historical data long-term once protected archival/backup handoff is verified.
 
 Before recreating, restoring, or replacing behavior that may have existed previously, read `AGENT_DELETION_CHANGELOG.md` and inspect the relevant native Git history first.
 
