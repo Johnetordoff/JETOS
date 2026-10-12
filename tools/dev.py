@@ -21,6 +21,7 @@ LANGUAGE_BUILD = BUILD / "jetos-language-build"
 LANGUAGE_PREFIX = BUILD / "jetos-language-install"
 ROOTFS = BUILD / "rootfs"
 INITRAMFS = BUILD / "jetos-initramfs.cpio.gz"
+STDLIB_MANIFEST = BUILD / "stdlib-surface.json"
 
 LINUX_VERSION = "6.12.96"
 LINUX_COMMIT = "6d15a1029d425b15c59463910ebdccc4afe760d6"
@@ -200,6 +201,17 @@ def build_language() -> tuple[Path, Path]:
     return runtime, stdlib
 
 
+def qualify_stdlib(runtime: Path) -> None:
+    """Prove the language surface before doing any Linux build work."""
+    run([
+        str(runtime),
+        "tools/stdlib_qualify.py",
+        "--strict",
+        "--manifest",
+        str(STDLIB_MANIFEST),
+    ])
+
+
 def kernel_image(target_arch: str) -> Path:
     if target_arch == "x86_64":
         return LINUX_SOURCE / "arch/x86/boot/bzImage"
@@ -245,6 +257,7 @@ def tests() -> None:
         "test_unicode.py",
         "test_language.py",
         "test_bootstrap.py",
+        "test_stdlib_qualify.py",
     ):
         run([sys.executable, f"tools/{script}"])
 
@@ -259,12 +272,14 @@ def build_all() -> tuple[Path, Path, Path]:
     tests()
     prepare_sources()
     runtime, stdlib = build_language()
+    qualify_stdlib(runtime)
     target_arch = arch()
     kernel = build_kernel(target_arch)
     build_initramfs(runtime, stdlib)
     print("\nJETOS development artifacts")
     print(f"  architecture: {target_arch}")
     print(f"  language:     {runtime}")
+    print(f"  stdlib:       {STDLIB_MANIFEST}")
     print(f"  kernel:       {kernel} ({kernel.stat().st_size} bytes)")
     print("  Linux source: /usr/src/linux (complete frozen working tree)")
     print(f"  initramfs:    {INITRAMFS} ({INITRAMFS.stat().st_size} bytes)")
@@ -303,6 +318,7 @@ def status() -> None:
     print("source mode: frozen checkout; no prepare/build/run downloads")
     print(f"Linux {LINUX_VERSION}: {LINUX_COMMIT}")
     print("Linux source image policy: complete tree at /usr/src/linux")
+    print("reduction policy: preserve the complete qualifying JETOS/Python stdlib surface")
     print(f"CPython ancestor: {CPYTHON_COMMIT}")
     source_status("vendor/linux", VENDOR_LINUX, LINUX_COMMIT, "Makefile")
     source_status(
@@ -316,6 +332,7 @@ def status() -> None:
         LANGUAGE_SOURCE,
         LANGUAGE_BUILD,
         LANGUAGE_PREFIX,
+        STDLIB_MANIFEST,
         LINUX_SOURCE,
         ROOTFS,
         INITRAMFS,
