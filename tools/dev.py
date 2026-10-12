@@ -6,11 +6,15 @@ import argparse
 import os
 from pathlib import Path
 import platform
+import shutil
 import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT / ".build"
+VENDOR = ROOT / "vendor"
+VENDOR_LINUX = VENDOR / "linux"
+VENDOR_CPYTHON = VENDOR / "cpython"
 LINUX_SOURCE = BUILD / "linux"
 LANGUAGE_SOURCE = BUILD / "jetos-language-src"
 LANGUAGE_BUILD = BUILD / "jetos-language-build"
@@ -18,10 +22,8 @@ LANGUAGE_PREFIX = BUILD / "jetos-language-install"
 ROOTFS = BUILD / "rootfs"
 INITRAMFS = BUILD / "jetos-initramfs.cpio.gz"
 
-LINUX_REPOSITORY = "https://github.com/gregkh/linux.git"
 LINUX_VERSION = "6.12.96"
 LINUX_COMMIT = "6d15a1029d425b15c59463910ebdccc4afe760d6"
-CPYTHON_REPOSITORY = "https://github.com/python/cpython.git"
 CPYTHON_COMMIT = "9d22a5334bd5273962adceeb697a1337e9a0ca21"
 
 
@@ -52,48 +54,77 @@ def arch() -> str:
     )
 
 
-def ensure_checkout(
-    url: str,
-    commit: str,
-    destination: Path,
-    branch: str | None = None,
+def vendor_head(source: Path) -> str:
+    return run(
+        ["git", "-C", str(source), "rev-parse", "HEAD"],
+        capture=True,
+    ).stdout.strip()
+
+
+def require_vendor(
+    name: str,
+    source: Path,
+    expected_commit: str,
+    required_file: str,
 ) -> None:
-    if destination.exists():
-        head = run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=destination,
-            capture=True,
-        ).stdout.strip()
-        if head == commit:
-            return
-        ancestor = subprocess.run(
-            ["git", "merge-base", "--is-ancestor", commit, "HEAD"],
-            cwd=destination,
-            text=True,
-        )
-        if ancestor.returncode == 0:
-            return
+    if not (source / required_file).is_file():
         raise SystemExit(
-            f"{destination} exists at {head}, but pinned base {commit} is "
-            "not an ancestor; remove it or inspect it before continuing"
+            f"frozen {name} source is missing at {source}. "
+            "JETOS will not download it during prepare/build/run. "
+            "Acquire the repository with its pinned submodules before building."
+        )
+    actual = vendor_head(source)
+    if actual != expected_commit:
+        raise SystemExit(
+            f"frozen {name} source mismatch: {actual}; "
+            f"required {expected_commit}. JETOS will not fetch or repair it."
         )
 
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    run(["git", "init", str(destination)])
-    run(["git", "remote", "add", "origin", url], cwd=destination)
-    run(["git", "fetch", "--depth", "1", "origin", commit], cwd=destination)
-    run(["git", "checkout", "--detach", "FETCH_HEAD"], cwd=destination)
-    if branch:
-        run(["git", "switch", "-c", branch], cwd=destination)
+
+def copy_vendor_source(
+    source: Path,
+    destination: Path,
+    commit: str,
+    required_file: str,
+) -> None:
+    marker = destination / ".jetos-vendor-base"
+    if (
+        marker.is_file()
+        and marker.read_text(encoding="utf-8").strip() == commit
+        and (destination / required_file).is_file()
+    ):
+        return
+    if destination.exists():
+        shutil.rmtree(destination)
+    shutil.copytree(
+        source,
+        destination,
+        symlinks=True,
+        ignore=shutil.ignore_patterns(".git"),
+    )
+    marker.write_text(commit + "\n", encoding="utf-8")
 
 
 def prepare_sources() -> None:
-    ensure_checkout(LINUX_REPOSITORY, LINUX_COMMIT, LINUX_SOURCE)
-    ensure_checkout(
-        CPYTHON_REPOSITORY,
+    """Prepare only from the frozen source checkouts already in this repo."""
+    require_vendor("Linux", VENDOR_LINUX, LINUX_COMMIT, "Makefile")
+    require_vendor(
+        "CPython",
+        VENDOR_CPYTHON,
         CPYTHON_COMMIT,
+        "Python/sysmodule.c",
+    )
+    copy_vendor_source(
+        VENDOR_LINUX,
+        LINUX_SOURCE,
+        LINUX_COMMIT,
+        "Makefile",
+    )
+    copy_vendor_source(
+        VENDOR_CPYTHON,
         LANGUAGE_SOURCE,
-        "jetos-language",
+        CPYTHON_COMMIT,
+        "Python/sysmodule.c",
     )
     run([
         sys.executable,
@@ -101,26 +132,6 @@ def prepare_sources() -> None:
         "patch",
         str(LANGUAGE_SOURCE),
     ])
-    status = run(
-        ["git", "status", "--porcelain"],
-        cwd=LANGUAGE_SOURCE,
-        capture=True,
-    ).stdout
-    if status.strip():
-        run(
-            ["git", "add", "Include/jetos.h", "Python/sysmodule.c"],
-            cwd=LANGUAGE_SOURCE,
-        )
-        run([
-            "git",
-            "-c",
-            "user.name=JETOS Bootstrap",
-            "-c",
-            "user.email=jetos@localhost",
-            "commit",
-            "-m",
-            "Start editable JETOS language fork",
-        ], cwd=LANGUAGE_SOURCE)
 
 
 def find_language_runtime() -> tuple[Path, Path]:
@@ -273,9 +284,30 @@ def boot(kernel: Path, initramfs: Path) -> None:
     os.execv(sys.executable, run_args)
 
 
+def source_status(name: str, source: Path, commit: str, required: str) -> None:
+    if not (source / required).is_file():
+        print(f"{name}: missing from checkout")
+        return
+    try:
+        head = vendor_head(source)
+    except subprocess.CalledProcessError:
+        print(f"{name}: present, commit unreadable")
+        return
+    state = "frozen" if head == commit else "WRONG REVISION"
+    print(f"{name}: {state} {head}")
+
+
 def status() -> None:
+    print("source mode: frozen checkout; no prepare/build/run downloads")
     print(f"Linux {LINUX_VERSION}: {LINUX_COMMIT}")
     print(f"CPython ancestor: {CPYTHON_COMMIT}")
+    source_status("vendor/linux", VENDOR_LINUX, LINUX_COMMIT, "Makefile")
+    source_status(
+        "vendor/cpython",
+        VENDOR_CPYTHON,
+        CPYTHON_COMMIT,
+        "Python/sysmodule.c",
+    )
     print(f"target architecture: {arch()}")
     for path in (
         LANGUAGE_SOURCE,

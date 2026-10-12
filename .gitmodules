@@ -1,0 +1,8 @@
+[submodule "vendor/linux"]
+	path = vendor/linux
+	url = https://github.com/gregkh/linux.git
+	shallow = true
+[submodule "vendor/cpython"]
+	path = vendor/cpython
+	url = https://github.com/python/cpython.git
+	shallow = true
