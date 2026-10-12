@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT / ".build"
 PORT = ROOT / "ports" / "gcc" / "ordered_hash_map_c"
+C_COMPILER = os.environ.get("CC", "cc")
 
 
 def run(*args: str, env: dict[str, str] | None = None) -> None:
@@ -31,11 +33,22 @@ def assert_no_github_actions() -> None:
         )
 
 
+def require_c_compiler() -> str:
+    """Return the selected C compiler without baking a vendor into JETOS."""
+    compiler = shutil.which(C_COMPILER)
+    if compiler is None:
+        raise AssertionError(
+            f"JETOS requires a C compiler capability; CC={C_COMPILER!r} was not found"
+        )
+    return compiler
+
+
 def build_and_run(name: str, extra_flags: list[str]) -> None:
     BUILD.mkdir(exist_ok=True)
     output = BUILD / name
+    compiler = require_c_compiler()
     run(
-        "gcc",
+        compiler,
         "-std=c11",
         "-Wall",
         "-Wextra",
@@ -58,6 +71,7 @@ def main() -> int:
     run(sys.executable, "tools/test_architectures.py")
     run(sys.executable, "tools/test_package.py")
     run(sys.executable, "tools/test_kernel_codesign_baseline.py")
+    run(sys.executable, "tools/test_docker_contract.py")
     env = os.environ.copy()
     env["PYTHONPATH"] = str(ROOT / "src")
     run(

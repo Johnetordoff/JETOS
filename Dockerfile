@@ -1,5 +1,12 @@
-FROM python:3.13-slim
+ARG PYTHON_IMAGE=python:3.14.8-slim
+FROM ${PYTHON_IMAGE} AS base
 
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Bootstrap provider mapping for JETOS build capabilities.  JETOS-owned code
+# asks for semantic capabilities (C compiler, linker, kernel-build tools), not
+# for a compiler vendor.  This Debian-based container currently provides those
+# capabilities with the packages below.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         git \
@@ -24,19 +31,28 @@ RUN apt-get update \
         xz-utils \
         qemu-system-x86 \
         qemu-system-arm \
+        strace \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /jetos
-COPY . /jetos
-
 ENV PYTHONPATH=/jetos/src
 ENV LANG=C.UTF-8
 ENV LC_ALL=C.UTF-8
+ENV JETOS_CONTAINER=1
+ENV CC=cc
 
-RUN python tools/test.py
-RUN python tools/test_unicode.py
-RUN python tools/test_language.py
-RUN python tools/test_bootstrap.py
-RUN python tools/test_stdlib_qualify.py
+# Reproducible JETOS userspace qualification.  The two large frozen source
+# submodules are excluded from this build context because this stage tests the
+# JETOS-owned operating-system userspace and repository contract, not a full
+# kernel/CPython rebuild.
+FROM base AS test
+COPY . /jetos
+RUN python tools/docker_contract.py
+RUN python tools/container_os_qualify.py --phase build --require-toolchain
+RUN python jetos.py test
+CMD ["python", "tools/container_os_qualify.py", "--phase", "runtime", "--require-toolchain"]
 
+# Fat development environment.  `python jetos.py dev` bind-mounts the checkout
+# (including initialized vendor submodules) at /jetos before build/QEMU work.
+FROM base AS dev
 CMD ["python", "jetos.py", "doctor"]

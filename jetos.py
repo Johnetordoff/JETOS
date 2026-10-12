@@ -10,6 +10,10 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parent
+DOCKER_TEST_IMAGE = "jetos:fat-test"
+DOCKER_DEV_IMAGE = "jetos:dev"
+TEST_TARGET = "test"
+DEV_TARGET = "dev"
 
 
 def run(args: list[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -26,14 +30,61 @@ def tests() -> None:
         python_tool(script, [])
 
 
-def docker_dev(build_only: bool) -> None:
+def require_docker() -> str:
+    """Require both the Docker CLI and a reachable Docker daemon."""
     docker = shutil.which("docker")
     if not docker:
         raise SystemExit(
-            "Docker is not installed. Run `python jetos.py setup --plan` "
-            "or `python jetos.py setup --install`."
+            "JETOS Docker qualification cannot start: the Docker CLI executable "
+            "was not found. Required host capability: a Docker CLI connected to "
+            "a Docker daemon. No GitHub Actions fallback is permitted."
         )
-    run([docker, "build", "-t", "jetos:dev", "."])
+
+    probe = subprocess.run(
+        [docker, "info", "--format", "{{.ServerVersion}}"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if probe.returncode != 0:
+        detail = (probe.stderr or probe.stdout).strip() or "no diagnostic output"
+        raise SystemExit(
+            "JETOS Docker qualification cannot start: the Docker CLI exists but "
+            "the Docker daemon is not reachable. Start/connect the daemon or set "
+            "the normal Docker host configuration, then rerun `python jetos.py "
+            f"docker-test`. Docker reported: {detail}"
+        )
+    print(f"Docker daemon: {probe.stdout.strip()}")
+    return docker
+
+
+def docker_test() -> None:
+    """Build and execute JETOS userspace/OS qualification in Docker."""
+    docker = require_docker()
+    run([
+        docker,
+        "build",
+        "--pull",
+        "--target", TEST_TARGET,
+        "--tag", DOCKER_TEST_IMAGE,
+        ".",
+    ])
+    # The test image's default command is the runtime OS qualifier.  Running
+    # it directly makes that Python process PID 1 inside the container.
+    run([docker, "run", "--rm", DOCKER_TEST_IMAGE])
+
+
+def docker_dev(build_only: bool) -> None:
+    docker = require_docker()
+    run([
+        docker,
+        "build",
+        "--pull",
+        "--target", DEV_TARGET,
+        "--tag", DOCKER_DEV_IMAGE,
+        ".",
+    ])
     command = [
         docker,
         "run",
@@ -47,7 +98,7 @@ def docker_dev(build_only: bool) -> None:
     if os.name == "posix" and Path("/dev/kvm").exists():
         command.extend(["--device", "/dev/kvm"])
     command.extend([
-        "jetos:dev",
+        DOCKER_DEV_IMAGE,
         "python",
         "tools/dev.py",
         "build" if build_only else "run",
@@ -91,7 +142,11 @@ def main() -> int:
     setup.add_argument("--install", action="store_true")
     setup.add_argument("--yes", action="store_true")
 
-    sub.add_parser("test", help="run repository tests")
+    sub.add_parser("test", help="run repository tests on the current host")
+    sub.add_parser(
+        "docker-test",
+        help="build and run JETOS userspace/OS qualification in Docker",
+    )
 
     dev = sub.add_parser(
         "dev",
@@ -118,6 +173,8 @@ def main() -> int:
         python_tool("host.py", forwarded)
     elif args.command == "test":
         tests()
+    elif args.command == "docker-test":
+        docker_test()
     elif args.command == "dev":
         if args.native:
             python_tool("dev.py", ["build" if args.build_only else "run"])
