@@ -28,7 +28,7 @@ The command first proves that both parts of the host Docker capability exist:
 1. the `docker` CLI executable is available;
 2. the Docker daemon is reachable.
 
-If either is missing, JETOS stops with the exact failed capability instead of silently falling back to another CI system.
+If the CLI is absent, JETOS says that directly. If the CLI exists but the daemon/socket/remote Docker host is unavailable, JETOS reports Docker's daemon diagnostic. There is no silent fallback to GitHub Actions or another hosted system.
 
 Then it:
 
@@ -39,6 +39,8 @@ Then it:
 5. runs the JETOS runtime OS qualifier as container PID 1.
 
 The runtime qualifier checks the Python version, Linux substrate, `/proc`, `/sys`, `/dev`, file I/O, mmap, symlinks, selectors, Unix sockets, subprocess creation, shared memory, and required Fat-mode tool capabilities.
+
+A machine executing this test therefore needs a working Docker installation and access to any uncached base-image/package sources needed by `docker build`. A Jenkins worker can provide that environment directly; the repository does not attempt to install or secretly substitute a container engine during qualification.
 
 ## Tool capabilities, not vendor names
 
@@ -56,7 +58,7 @@ JETOS-owned code names what it needs by **capability**. For example:
 
 JETOS-owned native tests use `CC` and default to the conventional `cc` command. They do not hard-code `gcc` as the operating-system interface.
 
-The current Debian-based Docker bootstrap happens to satisfy the C-compiler capability with the `gcc` package and maps the other capabilities to Debian packages. That package/provider mapping is bootstrap implementation detail, not the permanent JETOS capability name.
+The current Debian-based Docker bootstrap happens to satisfy the C-compiler capability with the `gcc` package and maps the other capabilities to Debian packages. That package/provider mapping is bootstrap implementation detail, not the permanent JETOS capability name. JETOS does not yet declare one compiler vendor as part of its OS contract.
 
 ## Jenkins on Git
 
