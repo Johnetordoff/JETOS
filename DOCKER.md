@@ -2,7 +2,7 @@
 
 JETOS uses Docker as a **Fat-mode development and operating-system qualification environment**. Docker is not part of the Skinny HC1 runtime and is not a substitute for physical HC1 qualification.
 
-**GitHub Actions are forbidden.** The Docker path is repository-owned local/native tooling. Jenkins may trigger the same Git command/checkout and `python3 jetos.py docker-test`, but Jenkins is only a scheduler/executor; the test definition remains in JETOS itself.
+**GitHub Actions are forbidden.** The Docker path is repository-owned local/native tooling. Jenkins may schedule a JETOS Work Server cycle, but Jenkins is only a scheduler/executor; the build and qualification definitions remain in JETOS itself.
 
 ## What “JETOS in Docker” means
 
@@ -62,13 +62,22 @@ The current Debian-based Docker bootstrap happens to satisfy the C-compiler capa
 
 ## Jenkins on Git
 
-A repository `Jenkinsfile` invokes:
+The repository `Jenkinsfile` invokes:
 
 ```text
-python3 jetos.py docker-test
+python3 tools/work_server.py run-cycle
 ```
 
-A Jenkins worker therefore needs Git, Python 3 to invoke JETOS tooling, and access to a working Docker CLI/daemon. Jenkins does not duplicate test logic and does not introduce GitHub Actions.
+The Work Server then owns the actual gates, including:
+
+```text
+python jetos.py docker-test
+python jetos.py dev --build-only
+```
+
+This gives one canonical pipeline definition: Jenkins schedules a Git checkout and a Work Server cycle; the Work Server decides how JETOS is qualified. If automatic improvement is enabled on the worker, the same cycle can create an isolated candidate, rerun these gates, and retain the branch only after they pass. See `WORK_SERVER.md`.
+
+A Jenkins worker therefore needs Git, Python 3, a working Docker CLI/daemon, and the source/submodule access required by the Fat build. Jenkins does not duplicate test logic and does not introduce GitHub Actions.
 
 ## Development / QEMU container
 
