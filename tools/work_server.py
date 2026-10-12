@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
 """JETOS self-hosted work server.
 
-The server owns qualification cycles rather than exposing a shell.  A cycle:
+The Work Server owns build/test/improvement cycles rather than exposing a shell.
+A cycle is intentionally conservative:
 
-1. verifies the source checkout is clean;
-2. creates a disposable Git worktree/branch;
-3. runs JETOS Docker OS qualification and the Fat build gate;
-4. optionally asks an explicitly configured improver for one bounded unified diff;
-5. validates and applies the diff only inside the disposable worktree;
-6. reruns the full gates;
-7. keeps a Git commit/branch only when the candidate passes.
+1. require a clean Git checkout;
+2. create a disposable linked worktree and candidate branch;
+3. run Docker JETOS OS qualification and the Fat build gate;
+4. if requested, ask an explicitly configured improver for one bounded diff;
+5. validate/apply that diff only inside the disposable worktree;
+6. rerun every gate;
+7. retain a Git commit/branch only when the candidate passes.
 
-GitHub Actions are never used.  Jenkins may schedule `run-cycle`; JETOS owns the
-actual build/test/improvement policy.
+GitHub Actions are never used. Jenkins may schedule `run-cycle`; the repository
+owns all work policy.
 """
 from __future__ import annotations
 
@@ -39,7 +40,6 @@ from urllib.request import Request, urlopen
 import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
-STATE = ROOT / ".build" / "work-server"
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8787
 TOKEN_ENV = "JETOS_WORKSERVER_TOKEN"
@@ -59,6 +59,16 @@ FORBIDDEN_PATH_PREFIXES = (
     ".github/workflows/",
     "vendor/linux/",
     "vendor/cpython/",
+)
+INFRASTRUCTURE_MARKERS = (
+    "docker cli executable was not found",
+    "docker daemon is not reachable",
+    "cannot connect to the docker daemon",
+    "error during connect",
+    "temporary failure resolving",
+    "network is unreachable",
+    "could not resolve host",
+    "no space left on device",
 )
 
 
@@ -128,7 +138,7 @@ def require_clean_checkout(root: Path) -> str:
         raise RuntimeError(f"git status failed: {status.strip()}")
     if status.strip():
         raise RuntimeError(
-            "JETOS Work Server requires a clean checkout; commit/stash local changes first."
+            "JETOS Work Server requires a clean checkout; commit or stash local changes first."
         )
     rc, head = git(root, "rev-parse", "HEAD")
     if rc != 0:
@@ -162,6 +172,17 @@ def execute_gates(root: Path) -> tuple[bool, list[Step]]:
     return True, steps
 
 
+def infrastructure_failure(steps: list[Step]) -> str | None:
+    failed = [step for step in steps if step.returncode != 0]
+    if not failed:
+        return None
+    text = "\n".join(step.output.lower() for step in failed)
+    for marker in INFRASTRUCTURE_MARKERS:
+        if marker in text:
+            return marker
+    return None
+
+
 def relevant_files(root: Path, logs: str) -> list[Path]:
     candidates = [Path("AGENTS.md"), Path("README.md"), Path("PYTHON_KERNEL_CODESIGN.md")]
     pattern = re.compile(r"(?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]+\.(?:py|c|h|md|toml|json)")
@@ -190,10 +211,9 @@ def relevant_files(root: Path, logs: str) -> list[Path]:
 
 def build_improvement_prompt(root: Path, steps: list[Step], baseline_passed: bool) -> str:
     logs = "\n".join(f"===== {s.name} =====\n{s.output}" for s in steps)
-    files = relevant_files(root, logs)
     context_parts: list[str] = []
     total = 0
-    for relative in files:
+    for relative in relevant_files(root, logs):
         text = (root / relative).read_text(encoding="utf-8", errors="replace")
         block = f"\n===== FILE {relative.as_posix()} =====\n{text}"
         if total + len(block) > MAX_CONTEXT:
@@ -202,8 +222,8 @@ def build_improvement_prompt(root: Path, steps: list[Step], baseline_passed: boo
         total += len(block)
 
     objective = (
-        "The current qualification passed. Make one small, test-backed JETOS improvement "
-        "that advances an existing documented objective without changing protected semantics."
+        "The current gates pass. Make one small, test-backed JETOS improvement that "
+        "advances an existing documented objective without changing protected semantics."
         if baseline_passed
         else
         "Repair the earliest causal qualification/build failure without weakening, deleting, "
@@ -218,8 +238,9 @@ Hard constraints:
 - Keep the change small: at most {MAX_FILES} files.
 - Include or strengthen a repository-owned regression test for executable behavior changes.
 - Do not add Node.js or a JavaScript package/build stack.
-- Preserve Python 3.14 behavior and JETOS mandates in AGENTS.md.
-- Do not remove tests just to obtain a pass.
+- Preserve Python 3.14 behavior and every applicable JETOS mandate in AGENTS.md.
+- Do not remove, skip, or weaken tests merely to obtain a pass.
+- Do not try to repair missing Docker, networking, disk space, or other worker-host infrastructure by changing JETOS source.
 
 Qualification output:
 {logs[-MAX_CONTEXT:]}
@@ -351,8 +372,8 @@ def delete_branch(root: Path, branch: str) -> None:
     git(root, "branch", "-D", branch)
 
 
-def persist_cycle(cycle: Cycle) -> None:
-    directory = STATE / "cycles"
+def persist_cycle(cycle: Cycle, state: Path) -> None:
+    directory = state / "cycles"
     directory.mkdir(parents=True, exist_ok=True)
     target = directory / f"{cycle.id}.json"
     target.write_text(json.dumps(asdict(cycle), indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -362,19 +383,33 @@ def persist_cycle(cycle: Cycle) -> None:
 
 
 Improver = Callable[[str], str]
+GateRunner = Callable[[Path], tuple[bool, list[Step]]]
 
 
 class WorkEngine:
-    def __init__(self, root: Path = ROOT, improver: Improver | None = None) -> None:
+    def __init__(
+        self,
+        root: Path = ROOT,
+        improver: Improver | None = None,
+        gate_runner: GateRunner = execute_gates,
+    ) -> None:
         self.root = root
+        self.state = root / ".build" / "work-server"
         self.improver = improver or call_openai_improver
+        self.gate_runner = gate_runner
         self.lock = threading.Lock()
 
-    def run_cycle(self, *, improve: bool, push: bool = False) -> Cycle:
+    def run_cycle(
+        self,
+        *,
+        improve: bool,
+        push: bool = False,
+        cycle_id: str | None = None,
+    ) -> Cycle:
         if not self.lock.acquire(blocking=False):
             raise RuntimeError("another JETOS Work Server cycle is already running")
-        cycle = Cycle(id=uuid.uuid4().hex, improve=improve)
-        persist_cycle(cycle)
+        cycle = Cycle(id=cycle_id or uuid.uuid4().hex, improve=improve)
+        persist_cycle(cycle, self.state)
         branch: str | None = None
         worktree: Path | None = None
         accepted = False
@@ -382,19 +417,24 @@ class WorkEngine:
             cycle.status = "running"
             cycle.started_at = now()
             cycle.base_commit = require_clean_checkout(self.root)
-            persist_cycle(cycle)
+            persist_cycle(cycle, self.state)
 
             branch = f"workbot/{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}-{cycle.id[:8]}"
             cycle.branch = branch
-            tmp_root = Path(tempfile.mkdtemp(prefix="jetos-workserver-"))
-            worktree = tmp_root / "worktree"
+            temp_root = Path(tempfile.mkdtemp(prefix="jetos-workserver-"))
+            worktree = temp_root / "worktree"
             rc, out = git(self.root, "worktree", "add", "-b", branch, str(worktree), cycle.base_commit)
             if rc != 0:
                 raise RuntimeError(f"cannot create isolated worktree: {out.strip()}")
 
-            baseline_ok, baseline_steps = execute_gates(worktree)
+            baseline_ok, baseline_steps = self.gate_runner(worktree)
             cycle.steps.extend(baseline_steps)
-            persist_cycle(cycle)
+            blocked = infrastructure_failure(baseline_steps)
+            if blocked:
+                cycle.status = "blocked"
+                cycle.reason = f"worker infrastructure failure: {blocked}"
+                return cycle
+            persist_cycle(cycle, self.state)
 
             if not improve:
                 cycle.status = "passed" if baseline_ok else "failed"
@@ -405,15 +445,20 @@ class WorkEngine:
             raw = self.improver(prompt)
             patch = extract_diff(raw)
             cycle.candidate_patch = patch
-            candidate_dir = STATE / "candidates"
+            candidate_dir = self.state / "candidates"
             candidate_dir.mkdir(parents=True, exist_ok=True)
             (candidate_dir / f"{cycle.id}.diff").write_text(patch, encoding="utf-8")
             apply_patch(worktree, patch)
 
-            candidate_ok, candidate_steps = execute_gates(worktree)
+            candidate_ok, candidate_steps = self.gate_runner(worktree)
             for step in candidate_steps:
                 step.name = "candidate-" + step.name
             cycle.steps.extend(candidate_steps)
+            blocked = infrastructure_failure(candidate_steps)
+            if blocked:
+                cycle.status = "blocked"
+                cycle.reason = f"worker infrastructure failed while validating candidate: {blocked}"
+                return cycle
             if not candidate_ok:
                 cycle.status = "rejected"
                 cycle.reason = "candidate did not pass the full JETOS gates"
@@ -442,8 +487,8 @@ class WorkEngine:
             if push:
                 rc, out = git(worktree, "push", "-u", "origin", branch)
                 if rc != 0:
-                    cycle.reason = f"candidate accepted locally but push failed: {out.strip()[-2048:]}"
                     cycle.status = "accepted"
+                    cycle.reason = f"candidate accepted locally but push failed: {out.strip()[-2048:]}"
                     return cycle
                 cycle.pushed = True
             cycle.status = "accepted"
@@ -455,13 +500,10 @@ class WorkEngine:
             return cycle
         finally:
             cycle.finished_at = now()
-            persist_cycle(cycle)
+            persist_cycle(cycle, self.state)
             if worktree is not None:
                 cleanup_worktree(self.root, worktree)
-                try:
-                    shutil.rmtree(worktree.parent, ignore_errors=True)
-                except OSError:
-                    pass
+                shutil.rmtree(worktree.parent, ignore_errors=True)
             if branch and not accepted:
                 delete_branch(self.root, branch)
             self.lock.release()
@@ -490,8 +532,7 @@ class WorkServer(ThreadingHTTPServer):
     def _loop(self) -> None:
         while True:
             cycle_id, improve, push = self.queue.get()
-            result = self.engine.run_cycle(improve=improve, push=push)
-            result.id = cycle_id
+            result = self.engine.run_cycle(improve=improve, push=push, cycle_id=cycle_id)
             with self.cycles_lock:
                 self.cycles[cycle_id] = result
 
