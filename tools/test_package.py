@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fast packaging checks for the full Linux-source-in-image rule."""
+"""Fast packaging checks for Linux source and stdlib qualification tooling."""
 from __future__ import annotations
 
 import importlib.util
@@ -37,7 +37,18 @@ def main() -> int:
         assert (target / "drivers/example/test.c").is_file()
         assert not (target / ".git").exists()
 
-    print("JETOS full Linux source packaging: PASS")
+        tool = package.install_stdlib_qualification(rootfs)
+        assert tool == rootfs / "jetos/tools/stdlib_qualify.py"
+        assert tool.is_file()
+        assert not (rootfs / "jetos/stdlib-qualify").exists()
+
+        package.install_stdlib_qualification(rootfs, "fast")
+        assert (rootfs / "jetos/stdlib-qualify").read_text(encoding="utf-8") == "fast\n"
+
+        package.install_stdlib_qualification(rootfs, "full")
+        assert (rootfs / "jetos/stdlib-qualify").read_text(encoding="utf-8") == "full\n"
+
+    print("JETOS packaging tests: PASS")
     return 0
 
 
