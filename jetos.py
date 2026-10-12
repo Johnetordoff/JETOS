@@ -70,8 +70,6 @@ def docker_test() -> None:
         "--tag", DOCKER_TEST_IMAGE,
         ".",
     ])
-    # The test image's default command is the runtime OS qualifier.  Running
-    # it directly makes that Python process PID 1 inside the container.
     run([docker, "run", "--rm", DOCKER_TEST_IMAGE])
 
 
@@ -159,6 +157,20 @@ def main() -> int:
         help="run build/QEMU directly on a Linux development host instead of Docker",
     )
 
+    work_server = sub.add_parser(
+        "work-server",
+        help="run the persistent self-hosted JETOS build/test/improvement server",
+    )
+    work_server.add_argument("--host", default="127.0.0.1")
+    work_server.add_argument("--port", type=int, default=8787)
+
+    work_cycle = sub.add_parser(
+        "work-cycle",
+        help="run one isolated JETOS Work Server qualification/improvement cycle",
+    )
+    work_cycle.add_argument("--improve", action="store_true")
+    work_cycle.add_argument("--push", action="store_true")
+
     sub.add_parser("text", help="print every tracked UTF-8 text file in JETOS")
 
     args = parser.parse_args()
@@ -180,6 +192,15 @@ def main() -> int:
             python_tool("dev.py", ["build" if args.build_only else "run"])
         else:
             docker_dev(args.build_only)
+    elif args.command == "work-server":
+        python_tool("work_server.py", ["serve", "--host", args.host, "--port", str(args.port)])
+    elif args.command == "work-cycle":
+        forwarded = ["run-cycle"]
+        if args.improve:
+            forwarded.append("--improve")
+        if args.push:
+            forwarded.append("--push")
+        python_tool("work_server.py", forwarded)
     elif args.command == "text":
         print_all_text()
     return 0

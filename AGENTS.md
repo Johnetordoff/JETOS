@@ -12,7 +12,8 @@ Before changing JetOS, read:
 8. `MANDATE_004G_NO_GITHUB_ACTIONS.md` — Developer One's permanent cross-repository Hyper Directive: never use GitHub Actions; build, test, qualification, packaging, benchmarking, and automation stay native/local under repository-owned tooling.
 9. `MANDATE_004H_UPSTREAM_CURRENCY.md` — Developer One's permanent hard rule that JETOS tracks stable CPython promptly, qualifies each update in Fat Mode, and only projects it into Skinny Mode after the protected Python/OS surface passes; Gentoo is the preferred source/build intelligence input pending any later promotion to a mandatory currency rule.
 10. `PYTHON_KERNEL_CODESIGN.md` — the active six-experiment program for using JETOS control of Python and the kernel to simplify or accelerate `subprocess`, `shutil`, tree traversal, asyncio/selectors, multiprocessing shared memory, and tempfile without reducing Python semantics.
-11. `KEEP_SAFE_SPEC.md` — the semantic contract for JETOS `KEEP_Safe`, the protected local-retention type for data that must remain locally available beyond the ordinary cutting-room window; retained bulk payloads are compressed and encrypted, keys remain separate, plaintext working copies stay temporary, and `KEEP_Safe` is not a loophole for indefinite bulk accumulation.
+11. `WORK_SERVER.md` — the self-hosted JETOS Work Server contract: clean Git base, isolated worktrees, Docker OS qualification, Fat build gates, bounded opt-in improvement, post-change requalification, and retention only of candidates that pass.
+12. `KEEP_SAFE_SPEC.md` — the semantic contract for JETOS `KEEP_Safe`, the protected local-retention type for data that must remain locally available beyond the ordinary cutting-room window; retained bulk payloads are compressed and encrypted, keys remain separate, plaintext working copies stay temporary, and `KEEP_Safe` is not a loophole for indefinite bulk accumulation.
 
 Before recreating, restoring, or replacing behavior that may have existed previously, read `AGENT_DELETION_CHANGELOG.md` and inspect the relevant native Git history first.
 
@@ -33,5 +34,7 @@ Raspberry Pi systems may be added as board profiles and optional delegate nodes.
 Node.js and its package ecosystem are forbidden. Browser JavaScript is allowed only for a genuine browser frontend and must not introduce Node or a JavaScript build/package stack.
 
 GitHub Actions are forbidden under `MANDATE_004G_NO_GITHUB_ACTIONS.md`. Do not add `.github/workflows/`, hosted Actions jobs, workflow dispatches, Actions artifacts, or hosted CI/status requirements. Use native Git and repository-owned local Python tooling instead.
+
+The Work Server is allowed to create disposable Git worktrees and candidate `workbot/*` branches, but an automatic candidate must remain isolated until it passes the repository-defined Docker qualification and Fat build gates. A worker-host failure is not permission to rewrite JETOS to hide missing Docker, networking, disk, credentials, or other infrastructure. Automatic code changes must remain bounded, test-backed, reviewable, and compliant with `MANDATE_004G_NO_GITHUB_ACTIONS.md`.
 
 Third-party dependencies are zero/minimal by default. Prefer Python's standard library and direct documented APIs over SDK/client-library dependencies. Imported native operating-system/toolchain substrate must remain explicit, pinned, provenance-accounted, and minimized.

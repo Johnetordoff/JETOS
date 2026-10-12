@@ -3,7 +3,7 @@
 
 JETOS uses the Docker CLI directly from Python. There is intentionally no
 Docker SDK dependency and absolutely no GitHub Actions dependency. Jenkins may
-schedule the same repository-owned command, but does not own the test logic.
+schedule the repository-owned Work Server cycle, but does not own test logic.
 """
 from __future__ import annotations
 
@@ -61,11 +61,15 @@ def assert_contract() -> None:
         )
 
     if not JENKINSFILE.is_file():
-        raise AssertionError("Jenkinsfile is required for Git-triggered Docker qualification")
+        raise AssertionError("Jenkinsfile is required for Git-triggered JETOS qualification")
     jenkins = JENKINSFILE.read_text(encoding="utf-8")
-    if "python3 jetos.py docker-test" not in jenkins:
+    if "python3 tools/work_server.py run-cycle" not in jenkins:
         raise AssertionError(
-            "Jenkins must invoke the repository-owned `python3 jetos.py docker-test` contract"
+            "Jenkins must invoke the repository-owned JETOS Work Server cycle"
+        )
+    if "jetos.py docker-test" in jenkins:
+        raise AssertionError(
+            "Jenkins must not duplicate the Work Server's Docker qualification policy"
         )
     if ".github/workflows" in jenkins:
         raise AssertionError("Jenkinsfile must not depend on GitHub Actions")
@@ -75,7 +79,7 @@ def main() -> int:
     assert_contract()
     print(
         "JETOS Docker contract: PASS "
-        f"({PYTHON_IMAGE}; targets={TEST_TARGET},{DEV_TARGET}; scheduler=Jenkins-compatible)"
+        f"({PYTHON_IMAGE}; targets={TEST_TARGET},{DEV_TARGET}; scheduler=Jenkins->WorkServer)"
     )
     return 0
 
