@@ -42,6 +42,7 @@ def main() -> int:
     run(sys.executable, "-m", "compileall", "-q", "src", "tools")
     run(sys.executable, "tools/test_architectures.py")
     run(sys.executable, "tools/test_package.py")
+    run(sys.executable, "tools/test_os_qualify.py")
     env = os.environ.copy()
     env["PYTHONPATH"] = str(ROOT / "src")
     run(
