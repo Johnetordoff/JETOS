@@ -53,7 +53,12 @@ def assert_contract() -> None:
         )
 
     dockerignore = DOCKERIGNORE.read_text(encoding="utf-8").splitlines()
-    required_ignores = {".git", ".build", "vendor/linux", "vendor/cpython"}
+    required_ignores = {
+        ".git",
+        ".build",
+        "source-brain/linux",
+        "source-brain/cpython",
+    }
     missing_ignores = sorted(required_ignores.difference(dockerignore))
     if missing_ignores:
         raise AssertionError(
