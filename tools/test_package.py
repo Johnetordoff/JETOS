@@ -43,7 +43,10 @@ def main() -> int:
         manifest = package.write_mode_manifest(rootfs, "fat", extension, fat_sources)
         data = json.loads(manifest.read_text(encoding="utf-8"))
         assert data["mode"] == "fat"
-        assert data["carries_complete_source"] is True
+        assert data["retains_bulk_source"] is True
+        assert data["requires_complete_source_closure"] is True
+        assert data["complete_portable_source_closure_qualified"] is False
+        assert data["source_closure"] == "jetos+jetos-language+linux+jetos-native"
         assert data["compiled_native_runtime_required"] is True
         assert data["native_backend"] == "c-extension"
 
@@ -55,6 +58,7 @@ def main() -> int:
         assert skinny["mode"] == "skinny"
         assert skinny["target_resolved"] is True
         assert skinny["source_trees"] == {}
+        assert skinny["source_closure"] == "provenance-only"
 
         tool = package.install_stdlib_qualification(rootfs)
         assert tool == rootfs / "jetos/tools/stdlib_qualify.py"
