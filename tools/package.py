@@ -9,6 +9,7 @@ import shutil
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD_TOOL = ROOT / "tools/build.py"
+STDLIB_TOOL = ROOT / "tools/stdlib_qualify.py"
 
 SPEC = importlib.util.spec_from_file_location("jetos_build", BUILD_TOOL)
 if SPEC is None or SPEC.loader is None:
@@ -40,6 +41,21 @@ def copy_linux_source(source: Path, rootfs: Path) -> Path:
     return target
 
 
+def install_stdlib_qualification(
+    rootfs: Path,
+    mode: str | None = None,
+) -> Path:
+    """Install the qualification tool and optionally arm it for first boot."""
+    target = rootfs / "jetos/tools/stdlib_qualify.py"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(STDLIB_TOOL, target)
+    marker = rootfs / "jetos/stdlib-qualify"
+    marker.unlink(missing_ok=True)
+    if mode is not None:
+        marker.write_text(mode + "\n", encoding="utf-8")
+    return target
+
+
 def main() -> int:
     python, stdlib = build.defaults()
     parser = argparse.ArgumentParser(
@@ -50,12 +66,20 @@ def main() -> int:
     parser.add_argument("--python", type=Path, default=python)
     parser.add_argument("--stdlib", type=Path, default=stdlib)
     parser.add_argument("--linux-source", type=Path, required=True)
+    parser.add_argument(
+        "--stdlib-qualify",
+        choices=("fast", "full"),
+        help="arm this image to run stdlib qualification during first boot",
+    )
     args = parser.parse_args()
 
     build.make_rootfs(args.rootfs, args.python, args.stdlib)
     installed = copy_linux_source(args.linux_source, args.rootfs)
+    install_stdlib_qualification(args.rootfs, args.stdlib_qualify)
     build.build_initramfs(args.rootfs, args.output)
     print(f"Linux source installed in guest: {installed.relative_to(args.rootfs)}")
+    if args.stdlib_qualify:
+        print(f"guest stdlib qualification armed: {args.stdlib_qualify}")
     return 0
 
 
