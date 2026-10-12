@@ -164,7 +164,10 @@ def main() -> None:
         flush=True,
     )
 
-    run_armed_stdlib_qualification()
+    if run_armed_stdlib_qualification():
+        # A qualification image is a one-shot test appliance.  Exiting PID 1
+        # intentionally terminates that VM after the PASS marker is emitted.
+        raise SystemExit(0)
 
     print(
         "shell: JETOS language interpreter",
