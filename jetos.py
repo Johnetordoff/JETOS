@@ -26,7 +26,7 @@ def tests() -> None:
         python_tool(script, [])
 
 
-def docker_dev(build_only: bool) -> None:
+def docker_dev(build_only: bool, selected_mode: str) -> None:
     docker = shutil.which("docker")
     if not docker:
         raise SystemExit(
@@ -51,6 +51,8 @@ def docker_dev(build_only: bool) -> None:
         "python",
         "tools/dev.py",
         "build" if build_only else "run",
+        "--mode",
+        selected_mode,
     ])
     os.execvp(docker, command)
 
@@ -99,6 +101,12 @@ def main() -> int:
     )
     dev.add_argument("--build-only", action="store_true")
     dev.add_argument(
+        "--mode",
+        choices=("fat", "skinny"),
+        default="fat",
+        help="Fat carries source; Skinny keeps the target-resolved runtime",
+    )
+    dev.add_argument(
         "--native",
         action="store_true",
         help="run build/QEMU directly on a Linux development host instead of Docker",
@@ -119,10 +127,11 @@ def main() -> int:
     elif args.command == "test":
         tests()
     elif args.command == "dev":
+        command = ["build" if args.build_only else "run", "--mode", args.mode]
         if args.native:
-            python_tool("dev.py", ["build" if args.build_only else "run"])
+            python_tool("dev.py", command)
         else:
-            docker_dev(args.build_only)
+            docker_dev(args.build_only, args.mode)
     elif args.command == "text":
         print_all_text()
     return 0
