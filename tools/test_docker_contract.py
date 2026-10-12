@@ -27,6 +27,12 @@ def main() -> int:
     assert 'CMD ["python", "tools/container_os_qualify.py", "--phase", "runtime", "--require-toolchain"]' in dockerfile
     assert 'CMD ["python", "jetos.py", "doctor"]' in dockerfile
 
+    dockerignore = (ROOT / ".dockerignore").read_text(encoding="utf-8")
+    assert "source-brain/linux" in dockerignore
+    assert "source-brain/cpython" in dockerignore
+    assert "vendor/linux" not in dockerignore
+    assert "vendor/cpython" not in dockerignore
+
     entrypoint = (ROOT / "jetos.py").read_text(encoding="utf-8")
     assert 'sub.add_parser(' in entrypoint
     assert '"docker-test"' in entrypoint
@@ -48,6 +54,8 @@ def main() -> int:
     assert '"docker-os-qualification", [python, "jetos.py", "docker-test"]' in work_server
     assert '"fat-build", [python, "jetos.py", "dev", "--build-only"]' in work_server
     assert '".github/workflows/"' in work_server
+    assert '"source-brain/linux/"' in work_server
+    assert '"source-brain/cpython/"' in work_server
 
     native_test = (ROOT / "tools/test.py").read_text(encoding="utf-8")
     assert 'C_COMPILER = os.environ.get("CC", "cc")' in native_test

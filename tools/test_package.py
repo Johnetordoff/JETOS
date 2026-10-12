@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Fast packaging checks for Linux source and stdlib qualification tooling."""
+"""Fast packaging checks for Fat/Skinny source and qualification boundaries."""
 from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+import shutil
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -16,11 +17,30 @@ package = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(package)
 
 
+def fake_make_rootfs(rootfs: Path, python: Path, stdlib: Path) -> None:
+    del python, stdlib
+    if rootfs.exists():
+        shutil.rmtree(rootfs)
+    (rootfs / "jetos").mkdir(parents=True)
+    (rootfs / "runtime-marker").write_text("runtime\n", encoding="utf-8")
+
+
+def fake_build_initramfs(rootfs: Path, output: Path) -> None:
+    assert (rootfs / "runtime-marker").is_file()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_bytes(b"jetos-test-initramfs")
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory() as temp:
         temp = Path(temp)
         source = temp / "linux"
         rootfs = temp / "rootfs"
+        output = temp / "image.cpio.gz"
+        runtime = temp / "python"
+        stdlib = temp / "stdlib"
+        runtime.write_text("runtime\n", encoding="utf-8")
+        stdlib.mkdir()
         (source / "drivers/example").mkdir(parents=True)
         (source / "Makefile").write_text("VERSION = 6\n", encoding="utf-8")
         (source / "README").write_text("Linux source\n", encoding="utf-8")
@@ -48,7 +68,58 @@ def main() -> int:
         package.install_stdlib_qualification(rootfs, "full")
         assert (rootfs / "jetos/stdlib-qualify").read_text(encoding="utf-8") == "full\n"
 
-    print("JETOS packaging tests: PASS")
+        original_make_rootfs = package.build.make_rootfs
+        original_build_initramfs = package.build.build_initramfs
+        package.build.make_rootfs = fake_make_rootfs
+        package.build.build_initramfs = fake_build_initramfs
+        try:
+            package.package_rootfs(
+                profile=package.PROFILE_FAT,
+                rootfs=rootfs,
+                output=output,
+                python=runtime,
+                stdlib=stdlib,
+                linux_source=source,
+                stdlib_qualify="fast",
+            )
+            assert (rootfs / "usr/src/linux/Makefile").is_file()
+            assert (rootfs / "jetos/tools/stdlib_qualify.py").is_file()
+            assert (rootfs / "jetos/stdlib-qualify").read_text(encoding="utf-8") == "fast\n"
+
+            package.package_rootfs(
+                profile=package.PROFILE_SKINNY,
+                rootfs=rootfs,
+                output=output,
+                python=runtime,
+                stdlib=stdlib,
+                linux_source=source,
+                stdlib_qualify=None,
+            )
+            assert (rootfs / "runtime-marker").is_file()
+            assert not (rootfs / "usr/src/linux").exists()
+            assert not (rootfs / "jetos/tools/stdlib_qualify.py").exists()
+            assert not (rootfs / "jetos/stdlib-qualify").exists()
+            assert output.read_bytes() == b"jetos-test-initramfs"
+
+            try:
+                package.package_rootfs(
+                    profile=package.PROFILE_SKINNY,
+                    rootfs=rootfs,
+                    output=output,
+                    python=runtime,
+                    stdlib=stdlib,
+                    linux_source=source,
+                    stdlib_qualify="full",
+                )
+            except SystemExit:
+                pass
+            else:
+                raise AssertionError("Skinny profile accepted Fat qualification tooling")
+        finally:
+            package.build.make_rootfs = original_make_rootfs
+            package.build.build_initramfs = original_build_initramfs
+
+    print("JETOS Fat/Skinny packaging tests: PASS")
     return 0
 
 

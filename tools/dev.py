@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reproducible JETOS development build and VM runner."""
+"""Reproducible JETOS Fat development build and VM runner."""
 from __future__ import annotations
 
 import argparse
@@ -12,9 +12,9 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT / ".build"
-VENDOR = ROOT / "vendor"
-VENDOR_LINUX = VENDOR / "linux"
-VENDOR_CPYTHON = VENDOR / "cpython"
+SOURCE_BRAIN = ROOT / "source-brain"
+SOURCE_BRAIN_LINUX = SOURCE_BRAIN / "linux"
+SOURCE_BRAIN_CPYTHON = SOURCE_BRAIN / "cpython"
 LINUX_SOURCE = BUILD / "linux"
 LANGUAGE_SOURCE = BUILD / "jetos-language-src"
 LANGUAGE_BUILD = BUILD / "jetos-language-build"
@@ -56,14 +56,14 @@ def arch() -> str:
     )
 
 
-def vendor_head(source: Path) -> str:
+def source_head(source: Path) -> str:
     return run(
         ["git", "-C", str(source), "rev-parse", "HEAD"],
         capture=True,
     ).stdout.strip()
 
 
-def require_vendor(
+def require_source_brain(
     name: str,
     source: Path,
     expected_commit: str,
@@ -71,25 +71,25 @@ def require_vendor(
 ) -> None:
     if not (source / required_file).is_file():
         raise SystemExit(
-            f"frozen {name} source is missing at {source}. "
+            f"Source Brain {name} source is missing at {source}. "
             "JETOS will not download it during prepare/build/run. "
-            "Acquire the repository with its pinned submodules before building."
+            "Acquire the repository with its pinned Source Brain submodules before building."
         )
-    actual = vendor_head(source)
+    actual = source_head(source)
     if actual != expected_commit:
         raise SystemExit(
-            f"frozen {name} source mismatch: {actual}; "
-            f"required {expected_commit}. JETOS will not fetch or repair it."
+            f"Source Brain {name} source mismatch: {actual}; "
+            f"required {expected_commit}. JETOS will not silently build an unrecorded revision."
         )
 
 
-def copy_vendor_source(
+def copy_source_brain(
     source: Path,
     destination: Path,
     commit: str,
     required_file: str,
 ) -> None:
-    marker = destination / ".jetos-vendor-base"
+    marker = destination / ".jetos-source-brain-base"
     if (
         marker.is_file()
         and marker.read_text(encoding="utf-8").strip() == commit
@@ -108,22 +108,22 @@ def copy_vendor_source(
 
 
 def prepare_sources() -> None:
-    """Prepare only from the frozen source checkouts already in this repo."""
-    require_vendor("Linux", VENDOR_LINUX, LINUX_COMMIT, "Makefile")
-    require_vendor(
+    """Prepare only from the exact Source Brain revisions recorded by JETOS."""
+    require_source_brain("Linux", SOURCE_BRAIN_LINUX, LINUX_COMMIT, "Makefile")
+    require_source_brain(
         "CPython",
-        VENDOR_CPYTHON,
+        SOURCE_BRAIN_CPYTHON,
         CPYTHON_COMMIT,
         "Python/sysmodule.c",
     )
-    copy_vendor_source(
-        VENDOR_LINUX,
+    copy_source_brain(
+        SOURCE_BRAIN_LINUX,
         LINUX_SOURCE,
         LINUX_COMMIT,
         "Makefile",
     )
-    copy_vendor_source(
-        VENDOR_CPYTHON,
+    copy_source_brain(
+        SOURCE_BRAIN_CPYTHON,
         LANGUAGE_SOURCE,
         CPYTHON_COMMIT,
         "Python/sysmodule.c",
@@ -236,9 +236,12 @@ def build_kernel(target_arch: str) -> Path:
 
 
 def build_initramfs(runtime: Path, stdlib: Path) -> None:
+    """Build the Fat development initramfs from exact Source Brain input."""
     run([
         sys.executable,
         "tools/package.py",
+        "--profile",
+        "fat",
         "--rootfs",
         str(ROOTFS),
         "--output",
@@ -248,7 +251,7 @@ def build_initramfs(runtime: Path, stdlib: Path) -> None:
         "--stdlib",
         str(stdlib),
         "--linux-source",
-        str(VENDOR_LINUX),
+        str(SOURCE_BRAIN_LINUX),
     ])
 
 
@@ -277,13 +280,15 @@ def build_all() -> tuple[Path, Path, Path]:
     target_arch = arch()
     kernel = build_kernel(target_arch)
     build_initramfs(runtime, stdlib)
-    print("\nJETOS development artifacts")
+    print("\nJETOS Fat development artifacts")
     print(f"  architecture: {target_arch}")
     print(f"  language:     JETOS on Python {CPYTHON_VERSION}")
     print(f"  runtime:      {runtime}")
     print(f"  stdlib:       {STDLIB_MANIFEST}")
     print(f"  kernel:       {kernel} ({kernel.stat().st_size} bytes)")
-    print("  Linux source: /usr/src/linux (complete frozen working tree)")
+    print(f"  Linux source: source-brain/linux @ {LINUX_COMMIT}")
+    print(f"  CPython src:  source-brain/cpython @ {CPYTHON_COMMIT}")
+    print("  guest source: /usr/src/linux (Fat profile only)")
     print(f"  initramfs:    {INITRAMFS} ({INITRAMFS.stat().st_size} bytes)")
     return runtime, kernel, INITRAMFS
 
@@ -308,24 +313,25 @@ def source_status(name: str, source: Path, commit: str, required: str) -> None:
         print(f"{name}: missing from checkout")
         return
     try:
-        head = vendor_head(source)
+        head = source_head(source)
     except subprocess.CalledProcessError:
         print(f"{name}: present, commit unreadable")
         return
-    state = "frozen" if head == commit else "WRONG REVISION"
+    state = "recorded" if head == commit else "WRONG REVISION"
     print(f"{name}: {state} {head}")
 
 
 def status() -> None:
-    print("source mode: frozen checkout; no prepare/build/run downloads")
+    print("source mode: Source Brain; no prepare/build/run downloads")
     print(f"Linux {LINUX_VERSION}: {LINUX_COMMIT}")
-    print("Linux source image policy: complete tree at /usr/src/linux")
+    print("Fat source policy: exact Source Brain tree is the build input")
+    print("Skinny source policy: complete Linux/CPython source trees are omitted")
     print("reduction policy: preserve the complete qualifying JETOS/Python stdlib surface")
     print(f"CPython {CPYTHON_VERSION} ancestor: {CPYTHON_COMMIT}")
-    source_status("vendor/linux", VENDOR_LINUX, LINUX_COMMIT, "Makefile")
+    source_status("source-brain/linux", SOURCE_BRAIN_LINUX, LINUX_COMMIT, "Makefile")
     source_status(
-        "vendor/cpython",
-        VENDOR_CPYTHON,
+        "source-brain/cpython",
+        SOURCE_BRAIN_CPYTHON,
         CPYTHON_COMMIT,
         "Python/sysmodule.c",
     )
@@ -347,7 +353,7 @@ def status() -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="JETOS reproducible development environment"
+        description="JETOS reproducible Fat development environment"
     )
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("status")
