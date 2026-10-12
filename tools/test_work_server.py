@@ -44,6 +44,14 @@ FORBIDDEN_PATCH = """diff --git a/.github/workflows/ci.yml b/.github/workflows/c
 +forbidden: true
 """
 
+SOURCE_BRAIN_PATCH = """diff --git a/source-brain/linux/kernel/example.c b/source-brain/linux/kernel/example.c
+--- a/source-brain/linux/kernel/example.c
++++ b/source-brain/linux/kernel/example.c
+@@ -1 +1 @@
+-old
++new
+"""
+
 
 def run(cwd: Path, *args: str) -> str:
     completed = subprocess.run(
@@ -101,6 +109,14 @@ def main() -> int:
         checks += 1
     else:
         raise AssertionError("GitHub Actions workflow patch must be rejected")
+
+    try:
+        ws.patch_paths(SOURCE_BRAIN_PATCH)
+    except RuntimeError as exc:
+        assert "forbidden" in str(exc).lower()
+        checks += 1
+    else:
+        raise AssertionError("ordinary Work Bot must not modify Source Brain")
 
     try:
         ws.validate_bind("0.0.0.0", None)
@@ -211,7 +227,9 @@ def main() -> int:
     source = (ROOT / "tools/work_server.py").read_text(encoding="utf-8")
     assert "shell=True" not in source
     assert "/v1/shell" not in source
-    checks += 2
+    assert "source-brain/linux/" in source
+    assert "source-brain/cpython/" in source
+    checks += 4
 
     print(f"JETOS Work Server tests: {checks} checks passed")
     return 0
