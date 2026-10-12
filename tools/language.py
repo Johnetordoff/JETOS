@@ -13,7 +13,8 @@ import subprocess
 import sys
 
 UPSTREAM_REPOSITORY = "https://github.com/python/cpython.git"
-UPSTREAM_COMMIT = "9d22a5334bd5273962adceeb697a1337e9a0ca21"
+UPSTREAM_VERSION = "3.14.8"
+UPSTREAM_COMMIT = "8e6e75d9102e39bed2a2b279203a396741180f12"
 FORK_BRANCH = "jetos-language"
 JETOS_LANGUAGE_VERSION = "0.1"
 
@@ -61,6 +62,7 @@ def patch_source(source: Path) -> list[Path]:
         "/* JETOS language fork identity. */\n"
         f'#define JETOS_LANGUAGE_VERSION "{JETOS_LANGUAGE_VERSION}"\n'
         f'#define JETOS_CPYTHON_BASE "{UPSTREAM_COMMIT}"\n'
+        f'#define JETOS_CPYTHON_VERSION "{UPSTREAM_VERSION}"\n'
         "\n"
         "#endif /* Py_JETOS_H */\n"
     )
@@ -127,7 +129,7 @@ def clone_fork(destination: Path, *, upstream: str = UPSTREAM_REPOSITORY) -> Non
         cwd=destination,
     )
     print(f"editable JETOS language fork: {destination}")
-    print(f"upstream base: {UPSTREAM_COMMIT}")
+    print(f"upstream base: Python {UPSTREAM_VERSION} / {UPSTREAM_COMMIT}")
     print(f"branch: {FORK_BRANCH}")
 
 
@@ -142,6 +144,7 @@ def source_status(source: Path) -> None:
     text = (source / "Python/sysmodule.c").read_text(encoding="utf-8")
     print(f"head: {head}")
     print(f"branch: {branch or '(detached)'}")
+    print(f"CPython base version: {UPSTREAM_VERSION}")
     implementation_is_jetos = '#define _PY_IMPL_NAME "jetos"' in text
     identity_header_exists = (source / "Include/jetos.h").exists()
     print(f"JETOS implementation name: {'yes' if implementation_is_jetos else 'no'}")
@@ -178,6 +181,7 @@ def smoke(build: Path) -> None:
         "import sys; "
         "assert sys.implementation.name == 'jetos', sys.implementation; "
         "assert sys.jetos_language_version == '0.1'; "
+        "assert sys.version_info[:2] == (3, 14), sys.version; "
         "print('implementation:', sys.implementation.name); "
         "print('cache tag:', sys.implementation.cache_tag); "
         "print('language version:', sys.jetos_language_version); "
