@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fast packaging checks for Linux source and stdlib qualification tooling."""
+"""Fast packaging checks for Linux source and qualification tooling."""
 from __future__ import annotations
 
 import importlib.util
@@ -40,10 +40,12 @@ def main() -> int:
         tool = package.install_stdlib_qualification(rootfs)
         assert tool == rootfs / "jetos/tools/stdlib_qualify.py"
         assert tool.is_file()
+        assert (rootfs / "jetos/tools/os_qualify.py").is_file()
         assert not (rootfs / "jetos/stdlib-qualify").exists()
 
         package.install_stdlib_qualification(rootfs, "fast")
         assert (rootfs / "jetos/stdlib-qualify").read_text(encoding="utf-8") == "fast\n"
+        assert (rootfs / "jetos/tools/os_qualify.py").is_file()
 
         package.install_stdlib_qualification(rootfs, "full")
         assert (rootfs / "jetos/stdlib-qualify").read_text(encoding="utf-8") == "full\n"
