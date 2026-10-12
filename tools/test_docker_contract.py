@@ -40,8 +40,14 @@ def main() -> int:
     assert 'phase == "runtime" and os.getpid() != 1' in qualifier
 
     jenkins = (ROOT / "Jenkinsfile").read_text(encoding="utf-8")
-    assert "python3 jetos.py docker-test" in jenkins
+    assert "python3 tools/work_server.py run-cycle" in jenkins
+    assert "python3 jetos.py docker-test" not in jenkins
     assert "github/workflows" not in jenkins.lower()
+
+    work_server = (ROOT / "tools/work_server.py").read_text(encoding="utf-8")
+    assert '"docker-os-qualification", [python, "jetos.py", "docker-test"]' in work_server
+    assert '"fat-build", [python, "jetos.py", "dev", "--build-only"]' in work_server
+    assert '".github/workflows/"' in work_server
 
     native_test = (ROOT / "tools/test.py").read_text(encoding="utf-8")
     assert 'C_COMPILER = os.environ.get("CC", "cc")' in native_test
