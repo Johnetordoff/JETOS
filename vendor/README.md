@@ -1,14 +1,14 @@
-# Frozen vendored sources
+# Frozen source inputs
 
-JETOS keeps the source inputs required for its Linux-backed Gen 2 build inside the repository. Normal `prepare`, `build`, and `run` operations do **not** clone, fetch, or download Linux or CPython.
+JETOS freezes its two large imported Gen 2 source inputs at exact Git commits:
 
-`vendor/sources.json` is the canonical provenance and integrity manifest. Each source snapshot is stored as a deterministic `tar.xz` stream split into sub-50 MiB Git-friendly chunks. `tools/vendor_sources.py materialize` verifies every chunk and the reconstructed archive before extracting it into `.build/`.
+- `vendor/linux` — Linux 6.12.96, commit `6d15a1029d425b15c59463910ebdccc4afe760d6`.
+- `vendor/cpython` — CPython ancestor commit `9d22a5334bd5273962adceeb697a1337e9a0ca21`.
 
-The frozen inputs are:
+They are shallow Git submodules so the JETOS repository stays small while the source checkout still has explicit, immutable revisions. Acquire them as part of checking out JETOS (for example with a recursive clone). That is source acquisition, not an operating-system runtime/build action.
 
-- Linux 6.12.96 at commit `6d15a1029d425b15c59463910ebdccc4afe760d6`.
-- The JETOS language source snapshot based on CPython commit `9d22a5334bd5273962adceeb697a1337e9a0ca21`, with the JETOS interpreter-identity patch already applied before archival.
+`python jetos.py dev`, `python tools/dev.py prepare`, `build`, and `run` never initialize, clone, fetch, pull, or update either source. They fail visibly if a frozen source is absent or at the wrong revision.
 
-Refreshing either source is an explicit maintainer operation: `python tools/vendor_sources.py freeze`. That command is intentionally separate from every ordinary build path and is the only source-freezing operation permitted to use the network. A fresh checkout containing the vendor chunks can prepare and build these source inputs without network access.
+For builds, JETOS copies the already-present frozen sources into ignored `.build/` working trees. The CPython copy then receives the small JETOS interpreter-identity patch locally; the pinned upstream source itself remains untouched. Linux is configured and compiled from its local frozen copy.
 
-The extracted `.build/` copies are disposable working material and remain ignored by Git. The vendor chunks are the repository-owned frozen source-of-truth inputs.
+Updating either gitlink is an explicit source-governance change and therefore changes the frozen JETOS source graph.

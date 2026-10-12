@@ -6,12 +6,15 @@ import argparse
 import os
 from pathlib import Path
 import platform
+import shutil
 import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT / ".build"
-VENDOR_MANIFEST = ROOT / "vendor/sources.json"
+VENDOR = ROOT / "vendor"
+VENDOR_LINUX = VENDOR / "linux"
+VENDOR_CPYTHON = VENDOR / "cpython"
 LINUX_SOURCE = BUILD / "linux"
 LANGUAGE_SOURCE = BUILD / "jetos-language-src"
 LANGUAGE_BUILD = BUILD / "jetos-language-build"
@@ -51,28 +54,84 @@ def arch() -> str:
     )
 
 
-def materialize_source(name: str, destination: Path) -> None:
-    run([
-        sys.executable,
-        "tools/vendor_sources.py",
-        "materialize",
-        name,
-        str(destination),
-    ])
+def vendor_head(source: Path) -> str:
+    return run(
+        ["git", "-C", str(source), "rev-parse", "HEAD"],
+        capture=True,
+    ).stdout.strip()
+
+
+def require_vendor(
+    name: str,
+    source: Path,
+    expected_commit: str,
+    required_file: str,
+) -> None:
+    if not (source / required_file).is_file():
+        raise SystemExit(
+            f"frozen {name} source is missing at {source}. "
+            "JETOS will not download it during prepare/build/run. "
+            "Acquire the repository with its pinned submodules before building."
+        )
+    actual = vendor_head(source)
+    if actual != expected_commit:
+        raise SystemExit(
+            f"frozen {name} source mismatch: {actual}; "
+            f"required {expected_commit}. JETOS will not fetch or repair it."
+        )
+
+
+def copy_vendor_source(
+    source: Path,
+    destination: Path,
+    commit: str,
+    required_file: str,
+) -> None:
+    marker = destination / ".jetos-vendor-base"
+    if (
+        marker.is_file()
+        and marker.read_text(encoding="utf-8").strip() == commit
+        and (destination / required_file).is_file()
+    ):
+        return
+    if destination.exists():
+        shutil.rmtree(destination)
+    shutil.copytree(
+        source,
+        destination,
+        symlinks=True,
+        ignore=shutil.ignore_patterns(".git"),
+    )
+    marker.write_text(commit + "\n", encoding="utf-8")
 
 
 def prepare_sources() -> None:
-    """Materialize the frozen in-repository sources without network access."""
-    if not VENDOR_MANIFEST.is_file():
-        raise SystemExit(
-            "JETOS vendored source manifest is missing. Normal prepare/build/run "
-            "never downloads Linux or CPython."
-        )
-    materialize_source("linux", LINUX_SOURCE)
-    materialize_source("cpython", LANGUAGE_SOURCE)
-    sysmodule = LANGUAGE_SOURCE / "Python/sysmodule.c"
-    if '#define _PY_IMPL_NAME "jetos"' not in sysmodule.read_text(encoding="utf-8"):
-        raise SystemExit("vendored JETOS language snapshot is not patched")
+    """Prepare only from the frozen source checkouts already in this repo."""
+    require_vendor("Linux", VENDOR_LINUX, LINUX_COMMIT, "Makefile")
+    require_vendor(
+        "CPython",
+        VENDOR_CPYTHON,
+        CPYTHON_COMMIT,
+        "Python/sysmodule.c",
+    )
+    copy_vendor_source(
+        VENDOR_LINUX,
+        LINUX_SOURCE,
+        LINUX_COMMIT,
+        "Makefile",
+    )
+    copy_vendor_source(
+        VENDOR_CPYTHON,
+        LANGUAGE_SOURCE,
+        CPYTHON_COMMIT,
+        "Python/sysmodule.c",
+    )
+    run([
+        sys.executable,
+        "tools/language.py",
+        "patch",
+        str(LANGUAGE_SOURCE),
+    ])
 
 
 def find_language_runtime() -> tuple[Path, Path]:
@@ -225,11 +284,30 @@ def boot(kernel: Path, initramfs: Path) -> None:
     os.execv(sys.executable, run_args)
 
 
+def source_status(name: str, source: Path, commit: str, required: str) -> None:
+    if not (source / required).is_file():
+        print(f"{name}: missing from checkout")
+        return
+    try:
+        head = vendor_head(source)
+    except subprocess.CalledProcessError:
+        print(f"{name}: present, commit unreadable")
+        return
+    state = "frozen" if head == commit else "WRONG REVISION"
+    print(f"{name}: {state} {head}")
+
+
 def status() -> None:
-    print("source mode: frozen vendored snapshots (offline build)")
+    print("source mode: frozen checkout; no prepare/build/run downloads")
     print(f"Linux {LINUX_VERSION}: {LINUX_COMMIT}")
-    print(f"JETOS/CPython ancestor: {CPYTHON_COMMIT}")
-    print(f"vendor manifest: {'present' if VENDOR_MANIFEST.is_file() else 'missing'}")
+    print(f"CPython ancestor: {CPYTHON_COMMIT}")
+    source_status("vendor/linux", VENDOR_LINUX, LINUX_COMMIT, "Makefile")
+    source_status(
+        "vendor/cpython",
+        VENDOR_CPYTHON,
+        CPYTHON_COMMIT,
+        "Python/sysmodule.c",
+    )
     print(f"target architecture: {arch()}")
     for path in (
         LANGUAGE_SOURCE,
