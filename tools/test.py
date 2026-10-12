@@ -56,6 +56,8 @@ def main() -> int:
     assert_no_github_actions()
     run(sys.executable, "-m", "compileall", "-q", "src", "tools")
     run(sys.executable, "tools/test_architectures.py")
+    run(sys.executable, "tools/test_modes.py")
+    run(sys.executable, "tools/test_native.py")
     run(sys.executable, "tools/test_package.py")
     env = os.environ.copy()
     env["PYTHONPATH"] = str(ROOT / "src")
