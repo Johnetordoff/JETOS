@@ -10,12 +10,14 @@ import importlib.util
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location("jetos_work_server", ROOT / "tools/work_server.py")
 assert SPEC and SPEC.loader
 ws = importlib.util.module_from_spec(SPEC)
+sys.modules[SPEC.name] = ws
 SPEC.loader.exec_module(ws)
 
 
@@ -88,7 +90,6 @@ def passing_gate(root: Path):
 def main() -> int:
     checks = 0
 
-    # Pure validation contracts.
     assert ws.patch_paths(PATCH) == ["src/core.py", "tools/test_core.py"]
     ws.validate_test_backing(ws.patch_paths(PATCH))
     checks += 2
@@ -120,7 +121,6 @@ def main() -> int:
     assert ws.infrastructure_failure([blocked_step])
     checks += 1
 
-    # A passing candidate is committed to a retained workbot/* branch.
     with tempfile.TemporaryDirectory() as temp:
         repo = make_repo(Path(temp))
         engine = ws.WorkEngine(root=repo, improver=lambda prompt: PATCH, gate_runner=passing_gate)
@@ -134,7 +134,6 @@ def main() -> int:
         assert (repo / ".build/work-server/candidates" / f"{cycle.id}.diff").is_file()
         checks += 5
 
-    # A candidate that fails the second gate is rejected and its branch disappears.
     with tempfile.TemporaryDirectory() as temp:
         repo = make_repo(Path(temp))
         calls = 0
@@ -164,7 +163,6 @@ def main() -> int:
         assert not run(repo, "git", "branch", "--list", cycle.branch)
         checks += 3
 
-    # Worker-host failures never invoke the code improver.
     with tempfile.TemporaryDirectory() as temp:
         repo = make_repo(Path(temp))
         called = False
@@ -186,7 +184,6 @@ def main() -> int:
         assert not called
         checks += 2
 
-    # Responses API text extraction is dependency-free and deterministic.
     payload = {
         "output": [
             {"content": [{"type": "output_text", "text": "diff --git a/a b/a"}]}
@@ -195,7 +192,6 @@ def main() -> int:
     assert ws.response_text(payload).startswith("diff --git")
     checks += 1
 
-    # Secrets are opt-in and never silently guessed.
     previous_key = os.environ.pop(ws.OPENAI_KEY_ENV, None)
     previous_model = os.environ.pop(ws.MODEL_ENV, None)
     try:
