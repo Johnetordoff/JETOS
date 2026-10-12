@@ -65,6 +65,28 @@ For each tracked information item or class, the worker should preserve non-secre
 
 Lifecycle state should use explicit language such as **CURRENT**, **AGING**, **DUE**, **STALE**, **EXPIRED**, **REVOKED**, **SUPERSEDED**, **UNKNOWN**, or another narrowly defined state where needed.
 
+### Meaning of DUE
+
+**DUE means the item has come up for judgment.** It is a review state, not a conclusion.
+
+A DUE item is not automatically stale, invalid, expired, replaceable, deletable, or eligible for mutation. It means the item's lifecycle rule says that the system, owner, or authorized worker should now inspect the evidence and decide whether to keep it current as-is, verify it again, refresh it, replace it, re-derive it, archive it, or take some other authorized action.
+
+The lifecycle worker must not collapse **DUE** into **STALE** or **EXPIRED**. Those stronger states require their own evidence.
+
+## Data hiding, protection, and backup
+
+Lifecycle management must not turn protected data into exposed data.
+
+The underlying data being tracked remains **hidden by default**, **protected**, and **backed up according to its applicable retention/recovery policy**. The lifecycle worker should operate primarily on metadata, provenance, timestamps, identifiers, hashes, dependency relationships, validity rules, and procedures rather than displaying or duplicating the data payload itself.
+
+A lifecycle inspection surface may reveal enough metadata for Developer One to understand an item's state and make a judgment, but it must not expose protected contents merely for convenience.
+
+Where the tracked item is important enough that loss would impair operation, provenance, recovery, auditability, or continuity, lifecycle management must verify or reference an appropriate backup/recovery path. A DUE, STALE, SUPERSEDED, or EXPIRED state does not by itself authorize deletion of the protected or backed-up data.
+
+Backup status is part of lifecycle safety. If an item is supposed to be backed up but the worker cannot establish that a valid recoverable copy exists, that uncertainty must be visible rather than silently treated as safe.
+
+This section does not require every transient cache or regenerable artifact to receive permanent backup. Backup requirements remain contextual to the item's role, recoverability, provenance value, owner policy, and other active retention rules.
+
 ## Credentials and expiring security material
 
 Credentials are a critical special case of the information lifecycle.
@@ -86,18 +108,21 @@ By default it may:
 - evaluate declared validity/expiry/review rules;
 - identify stale, expired, superseded, or unverifiable information;
 - identify missing refresh/replacement procedures;
+- identify items that are DUE for judgment without prejudging the result;
+- verify or reference required backup/recovery coverage using non-secret metadata;
 - generate owner-readable reports and machine-readable lifecycle records;
 - recommend the next refresh/replacement/verification action.
 
 It must not, merely by virtue of this mandate:
 
+- reveal protected data contents;
 - delete information;
 - overwrite canonical state;
 - rotate credentials;
 - revoke credentials;
 - modify external accounts;
 - fetch arbitrary Internet content outside JetOS's explicit network policy;
-- bypass approval, containment, provenance, or machine-safety rules.
+- bypass approval, containment, provenance, backup, retention, or machine-safety rules.
 
 A separate explicit authorization is required for destructive or externally mutating action.
 
@@ -128,7 +153,7 @@ Freshness/expiry may be determined by:
 - environment changes;
 - explicit owner policy.
 
-Where no authoritative lifetime exists, the worker may use a documented review interval, but it must distinguish a review deadline from a real expiry.
+Where no authoritative lifetime exists, the worker may use a documented review interval, but it must distinguish a review deadline from a real expiry. Reaching the review deadline ordinarily produces **DUE**, meaning judgment is required; it does not by itself prove staleness.
 
 ## Dependency awareness
 
@@ -167,12 +192,13 @@ JetOS should expose the worker's current lifecycle analysis in a simple owner-re
 
 At minimum the owner must be able to inspect:
 
-- what is being tracked;
+- what is being tracked, without unnecessarily exposing the protected data payload;
 - current lifecycle state;
-- what is due soon;
+- what is DUE for judgment;
 - what is stale/expired/unknown;
 - what depends on each item;
-- what procedure restores it to a valid state;
+- whether required backup/recovery coverage is known;
+- what procedure restores or revalidates it when action is actually warranted;
 - what evidence was used.
 
 A browser-viewable local HTML representation is preferred where JetOS already provides a browser inspection surface, but the canonical data model must not depend on a browser or JavaScript stack.
@@ -181,29 +207,31 @@ A browser-viewable local HTML representation is preferred where JetOS already pr
 
 The lifecycle system must prefer visible uncertainty over false confidence.
 
-If JetOS cannot establish the age, provenance, validity, expiry, replacement procedure, or authoritative source for important information, that gap must be visible as **UNKNOWN** or another explicit unresolved state.
+If JetOS cannot establish the age, provenance, validity, expiry, replacement procedure, required backup state, or authoritative source for important information, that gap must be visible as **UNKNOWN** or another explicit unresolved state.
 
-Silently assuming that information remains valid indefinitely is prohibited.
+Silently assuming that information remains valid indefinitely, or that required backup exists when it has not been established, is prohibited.
 
 ## Acceptance criteria
 
 This mandate is operational when JetOS has a worker or worker-capability that can:
 
-1. inventory important lifecycle-managed information without collecting secret values;
+1. inventory important lifecycle-managed information without unnecessarily revealing protected contents or collecting secret values;
 2. record provenance, age, verification time, lifecycle rule, dependency, and replacement/refresh procedure;
-3. distinguish current, aging, stale, expired/superseded, and unknown states;
-4. surface upcoming credential/certificate replacement before expiry;
-5. identify information whose validity cannot be established;
-6. show what JetOS components depend on stale or expiring information;
-7. preserve a human-readable procedure for restoring validity;
-8. validate refreshed/replaced information using appropriate evidence;
-9. operate under JetOS's Python-first, minimal-dependency, capability, network, provenance, and multi-architecture rules;
-10. avoid destructive or external mutation unless separately authorized.
+3. distinguish current, aging, DUE-for-judgment, stale, expired/superseded, and unknown states;
+4. preserve the rule that DUE requests judgment rather than automatically authorizing replacement, mutation, or deletion;
+5. surface upcoming credential/certificate replacement before expiry;
+6. identify information whose validity cannot be established;
+7. show what JetOS components depend on stale or expiring information;
+8. preserve or reference required backup/recovery coverage for protected important data;
+9. preserve a human-readable procedure for restoring validity;
+10. validate refreshed/replaced information using appropriate evidence;
+11. operate under JetOS's Python-first, minimal-dependency, capability, network, provenance, privacy, backup, and multi-architecture rules;
+12. avoid destructive or external mutation unless separately authorized.
 
 ## Relationship to other mandates
 
-This mandate complements source provenance, responsibility mapping, deletion governance, reproducibility, and credential lifecycle controls. It does not weaken retention, security, privacy, containment, machine-safety, deletion, or approval rules.
+This mandate complements source provenance, responsibility mapping, deletion governance, reproducibility, credential lifecycle controls, data protection, and backup/recovery policy. It does not weaken retention, security, privacy, containment, machine-safety, deletion, backup, or approval rules.
 
 The governing principle is:
 
-**Important information must have an understood lifecycle. JetOS should know not only what it knows, but when that knowledge stops being safe to trust and how to replace it before failure.**
+**Important information must have an understood lifecycle. JetOS should know not only what it knows, but when that knowledge comes up for judgment, when it actually stops being safe to trust, and how to preserve, protect, back up, verify, or replace it without exposing the underlying data.**
