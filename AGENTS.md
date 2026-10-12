@@ -7,6 +7,7 @@ Before changing JetOS, read:
 3. `ODROID_HC1_TARGET.md` — the current physical-hardware objective: boot and qualify JetOS Gen 2 on the ODROID-HC1, including Linux-appropriate full CPython standard-library qualification, Ethernet, safe SATA discovery, and optional Raspberry Pi delegation.
 4. `MANDATE_004.md` — Developer One's active permanent Hyper Mandate covering Python-first implementation, zero/minimal dependencies, no Node.js, API-first authorized AI integrations, JetOS familiarity, source reuse/minimization, multi-architecture support, the HC1 physical target, and the explicit xAI/Grok prohibition.
 5. `MANDATE_004D_UNUSED_CODE_RETIREMENT.md` — Developer One's permanent Super Directive requiring evidence-confirmed unused project-owned code to be retired eventually and every non-use deletion to be recorded in `AGENT_DELETION_CHANGELOG.md`.
+6. `MANDATE_004E_INFORMATION_LIFECYCLE.md` — Developer One's permanent sub-hyper-mandate requiring an Information Lifecycle Worker that tracks provenance, validity/freshness, dependencies, expiry or invalidation rules, and refresh/replacement procedures for important JetOS information, including pre-expiry credential lifecycle coverage without storing secret values.
 
 Before recreating, restoring, or replacing behavior that may have existed previously, read `AGENT_DELETION_CHANGELOG.md` and inspect the relevant native Git history first.
 
