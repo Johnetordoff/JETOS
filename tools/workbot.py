@@ -3,7 +3,7 @@
 
 The Work Bot exposes a deliberately small HTTP API for running repository-owned
 qualification/build jobs, recording results, and turning failures into bounded
-improvement proposals.  It never accepts arbitrary shell commands.
+improvement proposals. It never accepts arbitrary shell commands.
 """
 from __future__ import annotations
 
@@ -182,12 +182,14 @@ class WorkBot:
         runner: Runner | None = None,
         history_limit: int = MAX_HISTORY,
     ) -> None:
+        if history_limit < 1:
+            raise ValueError("history_limit must be >= 1")
         self.root = root
         self.runner = runner or (lambda command: run_command(command, root=root))
         self.history_limit = history_limit
         self.queue: queue.Queue[str] = queue.Queue()
         self.jobs: dict[str, Job] = {}
-        self.history: deque[str] = deque(maxlen=history_limit)
+        self.history: deque[str] = deque()
         self.lock = threading.RLock()
         self.stop_event = threading.Event()
         self.worker = threading.Thread(target=self._worker_loop, daemon=True)
@@ -198,6 +200,8 @@ class WorkBot:
     def start(self) -> None:
         self.jobs_dir.mkdir(parents=True, exist_ok=True)
         self.proposals_dir.mkdir(parents=True, exist_ok=True)
+        self._prune_dir(self.jobs_dir)
+        self._prune_dir(self.proposals_dir)
         if not self.worker.is_alive():
             self.worker.start()
 
@@ -212,6 +216,9 @@ class WorkBot:
             raise ValueError(f"unsupported JETOS Work Bot job: {kind}")
         job = Job(id=uuid.uuid4().hex, kind=kind)
         with self.lock:
+            while len(self.history) >= self.history_limit:
+                expired = self.history.popleft()
+                self.jobs.pop(expired, None)
             self.jobs[job.id] = job
             self.history.append(job.id)
             self._persist(job)
@@ -250,6 +257,19 @@ class WorkBot:
                 continue
             self._execute(job)
 
+    def _invoke(self, command: tuple[str, ...]) -> tuple[int, str]:
+        try:
+            return self.runner(command)
+        except subprocess.TimeoutExpired as exc:
+            output = exc.stdout or ""
+            if isinstance(output, bytes):
+                output = output.decode("utf-8", errors="replace")
+            return 124, (output + "\nWork Bot: job timed out")[-MAX_OUTPUT:]
+        except OSError as exc:
+            return 126, f"Work Bot: could not execute job: {exc}"[-MAX_OUTPUT:]
+        except Exception as exc:
+            return 125, f"Work Bot: runner failure: {type(exc).__name__}: {exc}"[-MAX_OUTPUT:]
+
     def _execute(self, job: Job) -> None:
         with self.lock:
             job.status = "running"
@@ -261,7 +281,7 @@ class WorkBot:
             job.steps = steps
         else:
             spec = available_jobs(self.root)[job.kind]
-            returncode, output = self.runner(spec.command)
+            returncode, output = self._invoke(spec.command)
             proposals = analyze_failure(job.kind, output, returncode)
         duration = time.monotonic() - started
         with self.lock:
@@ -284,7 +304,7 @@ class WorkBot:
         for kind in cycle_kinds(self.root):
             spec = specs[kind]
             started = time.monotonic()
-            returncode, output = self.runner(spec.command)
+            returncode, output = self._invoke(spec.command)
             duration = round(time.monotonic() - started, 6)
             step = {
                 "kind": kind,
@@ -302,7 +322,11 @@ class WorkBot:
     def _persist(self, job: Job) -> None:
         self.jobs_dir.mkdir(parents=True, exist_ok=True)
         path = self.jobs_dir / f"{job.id}.json"
-        path.write_text(json.dumps(asdict(job), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        path.write_text(
+            json.dumps(asdict(job), indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        self._prune_dir(self.jobs_dir)
 
     def _persist_proposals(self, job: Job) -> None:
         self.proposals_dir.mkdir(parents=True, exist_ok=True)
@@ -313,7 +337,23 @@ class WorkBot:
             "generated_at": now(),
             "proposals": job.proposals,
         }
-        path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        path.write_text(
+            json.dumps(payload, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        self._prune_dir(self.proposals_dir)
+
+    def _prune_dir(self, directory: Path) -> None:
+        files = sorted(
+            (path for path in directory.glob("*.json") if path.is_file()),
+            key=lambda path: path.stat().st_mtime_ns,
+            reverse=True,
+        )
+        for path in files[self.history_limit:]:
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                pass
 
 
 class WorkBotHTTPServer(ThreadingHTTPServer):
@@ -390,7 +430,10 @@ class WorkBotHandler(BaseHTTPRequestHandler):
             self._json(400, {"error": "invalid content length"})
             return
         if length <= 0 or length > MAX_BODY:
-            self._json(413 if length > MAX_BODY else 400, {"error": "invalid body size"})
+            self._json(
+                413 if length > MAX_BODY else 400,
+                {"error": "invalid body size"},
+            )
             return
         try:
             payload = json.loads(self.rfile.read(length).decode("utf-8"))
