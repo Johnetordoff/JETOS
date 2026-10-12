@@ -59,7 +59,9 @@ class HC1FlashTests(unittest.TestCase):
                 path = root / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(b"")
-            (root / "etc/ssh/sshd_config.d").mkdir(parents=True)
+            sshd_config = root / "etc/ssh/sshd_config"
+            sshd_config.parent.mkdir(parents=True, exist_ok=True)
+            sshd_config.write_text("PasswordAuthentication yes\n", encoding="utf-8")
 
             hc1_flash.configure_rootfs(
                 root,
@@ -75,9 +77,15 @@ class HC1FlashTests(unittest.TestCase):
 
             keys = root / "root/.ssh/authorized_keys"
             self.assertEqual(stat.S_IMODE(keys.stat().st_mode), 0o600)
-            ssh_config = (root / "etc/ssh/sshd_config.d/99-jetos-bootstrap.conf").read_text(encoding="utf-8")
-            self.assertIn("PasswordAuthentication no", ssh_config)
-            self.assertIn("PermitRootLogin prohibit-password", ssh_config)
+            hardened = sshd_config.read_text(encoding="utf-8")
+            self.assertTrue(hardened.startswith("# JETOS HC1 bootstrap policy"))
+            self.assertLess(
+                hardened.index("PasswordAuthentication no"),
+                hardened.index("PasswordAuthentication yes"),
+            )
+            self.assertIn("AuthenticationMethods publickey", hardened)
+            self.assertIn("PermitRootLogin prohibit-password", hardened)
+
             network = (root / "etc/systemd/network/20-jetos-wired.network").read_text(encoding="utf-8")
             self.assertIn("DHCP=yes", network)
             self.assertTrue((root / "opt/jetos/src/jetos/init.py").is_file())
