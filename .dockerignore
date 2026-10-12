@@ -4,5 +4,5 @@ __pycache__
 *.pyc
 *.pyo
 *.so
-vendor/linux
-vendor/cpython
+source-brain/linux
+source-brain/cpython
