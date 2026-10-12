@@ -1,6 +1,8 @@
-name: JETOS stdlib baseline
+name: JETOS Python/OS baseline
 
 on:
+  pull_request:
+    branches: [main]
   push:
     branches: [main]
   workflow_dispatch:
@@ -9,7 +11,7 @@ permissions:
   contents: read
 
 jobs:
-  booted-stdlib-baseline:
+  booted-python-os-baseline:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
 
@@ -53,26 +55,26 @@ jobs:
             xz-utils \
             qemu-system-x86
 
-      - name: Build and boot JETOS stdlib qualification image
+      - name: Build and boot JETOS qualification image
         shell: bash
         run: |
           set -o pipefail
           mkdir -p .build
           set +e
-          timeout 110m python3 tools/stdlib_guest.py 2>&1 | tee .build/stdlib-baseline.log
+          timeout 110m python3 tools/stdlib_guest.py 2>&1 | tee .build/python-os-baseline.log
           status=${PIPESTATUS[0]}
           set -e
-          if grep -q 'JETOS_STDLIB_QUALIFICATION=PASS' .build/stdlib-baseline.log; then
-            echo 'Booted JETOS stdlib baseline: PASS'
+          if grep -q 'JETOS_BASELINE_QUALIFICATION=PASS' .build/python-os-baseline.log; then
+            echo 'Booted JETOS Python/OS baseline: PASS'
             exit 0
           fi
-          echo "Booted JETOS stdlib baseline: FAIL (runner status ${status})"
+          echo "Booted JETOS Python/OS baseline: FAIL (runner status ${status})"
           exit "${status:-1}"
 
       - name: Upload baseline log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: jetos-stdlib-baseline-log
-          path: .build/stdlib-baseline.log
+          name: jetos-python-os-baseline-log
+          path: .build/python-os-baseline.log
           if-no-files-found: warn
