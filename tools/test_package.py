@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fast packaging checks for Fat/Skinnny source and qualification boundaries."""
+"""Fast packaging checks for Fat/Skinny source and qualification boundaries."""
 from __future__ import annotations
 
 import importlib.util
