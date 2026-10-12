@@ -225,8 +225,7 @@ def build_kernel(target_arch: str) -> Path:
 def build_initramfs(runtime: Path, stdlib: Path) -> None:
     run([
         sys.executable,
-        "tools/build.py",
-        "initramfs",
+        "tools/package.py",
         "--rootfs",
         str(ROOTFS),
         "--output",
@@ -235,6 +234,8 @@ def build_initramfs(runtime: Path, stdlib: Path) -> None:
         str(runtime),
         "--stdlib",
         str(stdlib),
+        "--linux-source",
+        str(VENDOR_LINUX),
     ])
 
 
@@ -265,6 +266,7 @@ def build_all() -> tuple[Path, Path, Path]:
     print(f"  architecture: {target_arch}")
     print(f"  language:     {runtime}")
     print(f"  kernel:       {kernel} ({kernel.stat().st_size} bytes)")
+    print("  Linux source: /usr/src/linux (complete frozen working tree)")
     print(f"  initramfs:    {INITRAMFS} ({INITRAMFS.stat().st_size} bytes)")
     return runtime, kernel, INITRAMFS
 
@@ -300,6 +302,7 @@ def source_status(name: str, source: Path, commit: str, required: str) -> None:
 def status() -> None:
     print("source mode: frozen checkout; no prepare/build/run downloads")
     print(f"Linux {LINUX_VERSION}: {LINUX_COMMIT}")
+    print("Linux source image policy: complete tree at /usr/src/linux")
     print(f"CPython ancestor: {CPYTHON_COMMIT}")
     source_status("vendor/linux", VENDOR_LINUX, LINUX_COMMIT, "Makefile")
     source_status(
