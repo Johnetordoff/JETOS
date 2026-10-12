@@ -24,9 +24,13 @@ def main() -> int:
     assert fat.carries_development_source
     assert fat.carries_kernel_source
     assert fat.can_derive_skinny_images
+    assert fat.browser_required
+    assert mode.browser_required("fat")
     assert not skinny.general_purpose_app_host
     assert not skinny.carries_development_source
     assert not skinny.carries_kernel_source
+    assert not skinny.browser_required
+    assert not mode.browser_required("skinny")
 
     image = (ROOT / "tools/image.py").read_text(encoding="utf-8")
     assert "copy_fat_sources" in image
