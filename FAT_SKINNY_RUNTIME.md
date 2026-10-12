@@ -6,7 +6,7 @@ JETOS has two deployment modes derived from the same source lineage.
 
 ## Fat mode
 
-**Fat mode is the portable source universe.** A Fat image carries the complete source material needed to understand, rebuild, retarget, and derive JETOS for the supported machine families. That includes the JETOS-owned source, the selected JETOS Language/CPython source, the selected kernel source, and JETOS-owned C-extension source.
+**Fat mode is the portable source universe.** A qualified Fat image carries the complete source material needed to understand, rebuild, retarget, and derive JETOS for the supported machine families. That includes the JETOS-owned source, the selected JETOS Language/CPython source, the selected kernel source, JETOS-owned C-extension source, and the source/provenance closure for imported native runtime dependencies.
 
 Fat mode is not interpreted-only. On the machine that is currently running it, JETOS builds and uses the **current target-native compiled runtime**:
 
@@ -17,6 +17,12 @@ Fat mode is not interpreted-only. On the machine that is currently running it, J
 - source for other supported targets remains available for rebuilding/retargeting but is not executed merely because it is present.
 
 Therefore Fat mode means **all relevant source is locally available, while the current machine still runs compiled target-native artifacts for speed**.
+
+### Fat source-closure gate
+
+The architectural target is complete source closure, but JETOS must distinguish that target from what the current bootstrap actually proves. The first implementation packages JETOS, JETOS Language/CPython, Linux, and JETOS-owned C-extension source. The current rootfs builder still copies some imported native shared libraries from its build environment.
+
+Until the corresponding source/provenance for libc, dynamic loader, crypto/compression/database/FFI and any other retained native runtime dependencies is pinned and carried or otherwise reproducibly derivable from the Fat source set, the image must report that **complete portable source closure is not yet qualified**. Missing closure is work to finish, not permission to redefine Fat as binary-only.
 
 ## Skinny mode
 
