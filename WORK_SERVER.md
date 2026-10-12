@@ -4,6 +4,8 @@ The JETOS Work Server is a **self-hosted build, qualification, and controlled-im
 
 It is not GitHub Actions and it never falls back to GitHub Actions. Jenkins may schedule work from Git, but Jenkins is only a scheduler: the repository-owned Python server defines what gets built, tested, accepted, rejected, and retained.
 
+The ordinary Work Server is deliberately distinct from the **Source Brain Weaver** described in `source-brain/README.md`. The Work Server handles bounded JETOS repository improvements. It is not authorized to rewrite the Linux or CPython Source Brain trees.
+
 ## What the server actually does
 
 A normal cycle is:
@@ -15,7 +17,7 @@ clean JETOS Git checkout
 create disposable linked worktree + workbot/* branch
         |
         v
-populate frozen source submodules
+populate Source Brain source submodules
         |
         v
 Docker JETOS OS qualification
@@ -103,13 +105,21 @@ Automatic candidates are deliberately narrow:
 - bounded number of files;
 - no renames;
 - no changes under `.github/workflows/`;
-- no changes to frozen `vendor/linux` or `vendor/cpython` source trees in the automatic candidate path;
+- no changes to `source-brain/linux` or `source-brain/cpython` in the ordinary automatic candidate path;
 - executable code changes require a regression-test change;
 - Node.js and JavaScript package/build stacks remain forbidden;
 - every applicable JETOS mandate remains binding;
 - tests cannot be skipped, deleted, or weakened merely to make a candidate pass.
 
 There is no HTTP endpoint for arbitrary shell commands or arbitrary argv execution.
+
+## Source Brain Weaver boundary
+
+Linux↔CPython co-design is intentionally outside the ordinary bounded Work Bot authority. The dedicated Source Brain Weaver responsibility may examine and propose coordinated changes to those trees, but a Source Brain candidate has a much stronger acceptance burden.
+
+At minimum it must retain exact source/artifact provenance and run the applicable combination of repository tests, CPython regression/stdlib qualification, Linux subsystem/self-tests, sanitizers/static analysis where useful, performance baselines, x86-64/ARMv7/ARM64 builds, QEMU/emulated boots, and physical target qualification for hardware-specific work. See `source-brain/README.md`.
+
+A future automated Source Brain worker may reuse Work Server isolation primitives, but it must not gain Source Brain write authority merely by removing the path block from the ordinary Work Bot. The stronger worker needs explicit source-weaving policy and qualification gates.
 
 ## Retention and Git
 
@@ -201,7 +211,7 @@ A real Work Server host needs the capabilities required by the work it performs:
 - Python 3 to launch the repository-owned controller;
 - Docker CLI plus a reachable Docker daemon;
 - access to required container base images/package sources when they are not already cached;
-- enough disk for Docker images, linked Git worktrees, CPython/Linux source, and JETOS build products;
+- enough disk for Docker images, linked Git worktrees, Source Brain Linux/CPython source, and JETOS build products;
 - credentials only for capabilities explicitly enabled, such as the improver API or optional Git push.
 
 The Docker/Fat environment itself carries the C compiler, linker, Linux-kernel build tools, emulators, and related build capabilities. JETOS names those by capability rather than permanently defining a compiler vendor as part of the OS interface.
