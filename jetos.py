@@ -104,6 +104,19 @@ def main() -> int:
         help="run build/QEMU directly on a Linux development host instead of Docker",
     )
 
+    workbot = sub.add_parser(
+        "workbot",
+        help="start the local JETOS build/test/improvement server",
+    )
+    workbot.add_argument("--host", default="127.0.0.1")
+    workbot.add_argument("--port", type=int, default=8787)
+    workbot.add_argument(
+        "--interval",
+        type=int,
+        default=0,
+        help="enqueue a full work cycle every N seconds while idle; 0 disables",
+    )
+
     sub.add_parser("text", help="print every tracked UTF-8 text file in JETOS")
 
     args = parser.parse_args()
@@ -123,6 +136,19 @@ def main() -> int:
             python_tool("dev.py", ["build" if args.build_only else "run"])
         else:
             docker_dev(args.build_only)
+    elif args.command == "workbot":
+        python_tool(
+            "workbot.py",
+            [
+                "serve",
+                "--host",
+                args.host,
+                "--port",
+                str(args.port),
+                "--interval",
+                str(args.interval),
+            ],
+        )
     elif args.command == "text":
         print_all_text()
     return 0
