@@ -25,7 +25,8 @@ STDLIB_MANIFEST = BUILD / "stdlib-surface.json"
 
 LINUX_VERSION = "6.12.96"
 LINUX_COMMIT = "6d15a1029d425b15c59463910ebdccc4afe760d6"
-CPYTHON_COMMIT = "9d22a5334bd5273962adceeb697a1337e9a0ca21"
+CPYTHON_VERSION = "3.14.8"
+CPYTHON_COMMIT = "8e6e75d9102e39bed2a2b279203a396741180f12"
 
 
 def run(
@@ -278,7 +279,8 @@ def build_all() -> tuple[Path, Path, Path]:
     build_initramfs(runtime, stdlib)
     print("\nJETOS development artifacts")
     print(f"  architecture: {target_arch}")
-    print(f"  language:     {runtime}")
+    print(f"  language:     JETOS on Python {CPYTHON_VERSION}")
+    print(f"  runtime:      {runtime}")
     print(f"  stdlib:       {STDLIB_MANIFEST}")
     print(f"  kernel:       {kernel} ({kernel.stat().st_size} bytes)")
     print("  Linux source: /usr/src/linux (complete frozen working tree)")
@@ -319,7 +321,7 @@ def status() -> None:
     print(f"Linux {LINUX_VERSION}: {LINUX_COMMIT}")
     print("Linux source image policy: complete tree at /usr/src/linux")
     print("reduction policy: preserve the complete qualifying JETOS/Python stdlib surface")
-    print(f"CPython ancestor: {CPYTHON_COMMIT}")
+    print(f"CPython {CPYTHON_VERSION} ancestor: {CPYTHON_COMMIT}")
     source_status("vendor/linux", VENDOR_LINUX, LINUX_COMMIT, "Makefile")
     source_status(
         "vendor/cpython",
