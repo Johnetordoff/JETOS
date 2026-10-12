@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Prepare and flash an incremental ODROID-HC1 JETOS SSH bootstrap image.
 
-This is deliberately a bring-up bridge, not the final JETOS-owned boot path. It
-starts from a known-bootable HC1 Linux base image, injects the current JETOS
-Python userspace, configures wired DHCP through systemd-networkd, and enables
-key-only OpenSSH. The physical SATA disk is never touched by this tool.
+This is a bring-up bridge, not the final JETOS-owned boot path. It starts from a
+known-bootable HC1 Linux image, injects the current JETOS Python userspace,
+configures wired DHCP and key-only OpenSSH, and never touches the HC1 SATA disk.
 """
 from __future__ import annotations
 
@@ -34,12 +33,7 @@ class HC1Error(RuntimeError):
 
 def run(args: list[str], *, capture: bool = False) -> subprocess.CompletedProcess[str]:
     print("+", " ".join(args), flush=True)
-    return subprocess.run(
-        args,
-        check=True,
-        text=True,
-        capture_output=capture,
-    )
+    return subprocess.run(args, check=True, text=True, capture_output=capture)
 
 
 def require_linux_root() -> None:
@@ -64,10 +58,9 @@ def sha256_file(path: Path) -> str:
 
 
 def image_reader(path: Path) -> BinaryIO:
-    suffix = path.suffix.lower()
-    if suffix == ".xz":
+    if path.suffix.lower() == ".xz":
         return lzma.open(path, "rb")
-    if suffix == ".gz":
+    if path.suffix.lower() == ".gz":
         return gzip.open(path, "rb")
     return path.open("rb")
 
@@ -78,10 +71,7 @@ def expand_image(source: Path, destination: Path) -> None:
     temporary.unlink(missing_ok=True)
     try:
         with image_reader(source) as src, temporary.open("wb") as dst:
-            while True:
-                chunk = src.read(COPY_CHUNK)
-                if not chunk:
-                    break
+            while chunk := src.read(COPY_CHUNK):
                 dst.write(chunk)
             dst.flush()
             os.fsync(dst.fileno())
@@ -99,9 +89,8 @@ def partition_path(device: Path, number: int) -> Path:
 
 
 def read_authorized_keys(path: Path) -> str:
-    text = path.read_text(encoding="utf-8")
     keys: list[str] = []
-    for raw in text.splitlines():
+    for raw in path.read_text(encoding="utf-8").splitlines():
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
@@ -122,8 +111,7 @@ def read_authorized_keys(path: Path) -> str:
 
 def find_existing(root: Path, candidates: tuple[str, ...], label: str) -> Path:
     for candidate in candidates:
-        path = root / candidate.lstrip("/")
-        if path.exists():
+        if (root / candidate.lstrip("/")).exists():
             return Path("/") / candidate.lstrip("/")
     raise HC1Error(f"base image is missing required {label}")
 
@@ -142,12 +130,27 @@ def replace_tree(source: Path, destination: Path) -> None:
     shutil.copytree(source, destination)
 
 
-def install_systemd_link(root: Path, unit: str, target: str) -> None:
-    wants = root / "etc/systemd/system" / target
+def enable_local_unit(root: Path, unit: str) -> None:
+    wants = root / "etc/systemd/system/multi-user.target.wants"
     wants.mkdir(parents=True, exist_ok=True)
     link = wants / unit
     link.unlink(missing_ok=True)
     link.symlink_to(f"/etc/systemd/system/{unit}")
+
+
+def harden_sshd(root: Path) -> None:
+    config = root / "etc/ssh/sshd_config"
+    if not config.is_file():
+        raise HC1Error("base image is missing /etc/ssh/sshd_config")
+    original = config.read_text(encoding="utf-8")
+    policy = """# JETOS HC1 bootstrap policy; first values win in sshd_config.
+AuthenticationMethods publickey
+PermitRootLogin prohibit-password
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PubkeyAuthentication yes
+"""
+    config.write_text(policy + "\n" + original, encoding="utf-8")
 
 
 def configure_rootfs(root: Path, authorized_keys: str, base_sha256: str, hostname: str) -> None:
@@ -159,11 +162,16 @@ def configure_rootfs(root: Path, authorized_keys: str, base_sha256: str, hostnam
         ("/usr/lib/systemd/systemd-networkd", "/lib/systemd/systemd-networkd"),
         "systemd-networkd",
     )
-    del networkd
 
     replace_tree(ROOT / "src/jetos", root / "opt/jetos/src/jetos")
-
-    console = f"""#!{python}\nfrom __future__ import annotations\nimport code\nimport sys\nsys.path.insert(0, '/opt/jetos/src')\nimport jetos\ncode.interact(banner='JETOS HC1 bootstrap console', local={{'jetos': jetos}})\n"""
+    console = f"""#!{python}
+from __future__ import annotations
+import code
+import sys
+sys.path.insert(0, '/opt/jetos/src')
+import jetos
+code.interact(banner='JETOS HC1 bootstrap console', local={{'jetos': jetos}})
+"""
     write_text(root, "/usr/local/bin/jetos-console", console, 0o755)
 
     ssh_dir = root / "root/.ssh"
@@ -172,58 +180,78 @@ def configure_rootfs(root: Path, authorized_keys: str, base_sha256: str, hostnam
     keys = ssh_dir / "authorized_keys"
     keys.write_text(authorized_keys, encoding="utf-8")
     keys.chmod(0o600)
-
-    write_text(
-        root,
-        "/etc/ssh/sshd_config.d/99-jetos-bootstrap.conf",
-        """# JETOS HC1 bring-up: key-only remote administration.\nPermitRootLogin prohibit-password\nPasswordAuthentication no\nKbdInteractiveAuthentication no\nPubkeyAuthentication yes\nUsePAM yes\n""",
-    )
+    harden_sshd(root)
 
     write_text(
         root,
         "/etc/systemd/network/20-jetos-wired.network",
-        """[Match]\nName=eth* en*\n\n[Network]\nDHCP=yes\nIPv6AcceptRA=yes\n""",
-    )
+        """[Match]
+Name=eth* en*
 
+[Network]
+DHCP=yes
+IPv6AcceptRA=yes
+""",
+    )
     write_text(
         root,
         "/etc/systemd/system/jetos-networkd.service",
-        """[Unit]\nDescription=JETOS HC1 wired network bootstrap\nDefaultDependencies=no\nAfter=systemd-udevd.service\nBefore=network-online.target\nWants=network-online.target\n\n[Service]\nType=notify\nExecStart=/usr/lib/systemd/systemd-networkd\nRestart=on-failure\n\n[Install]\nWantedBy=multi-user.target\n""",
+        f"""[Unit]
+Description=JETOS HC1 wired network bootstrap
+DefaultDependencies=no
+After=systemd-udevd.service
+Before=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+ExecStart={networkd}
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+""",
     )
-    # Some distributions place the networkd binary in /lib instead of /usr/lib.
-    networkd_binary = find_existing(
-        root,
-        ("/usr/lib/systemd/systemd-networkd", "/lib/systemd/systemd-networkd"),
-        "systemd-networkd",
-    )
-    service_path = root / "etc/systemd/system/jetos-networkd.service"
-    service_text = service_path.read_text(encoding="utf-8").replace(
-        "ExecStart=/usr/lib/systemd/systemd-networkd",
-        f"ExecStart={networkd_binary}",
-    )
-    service_path.write_text(service_text, encoding="utf-8")
-    install_systemd_link(root, "jetos-networkd.service", "multi-user.target.wants")
+    enable_local_unit(root, "jetos-networkd.service")
 
     write_text(
         root,
         "/etc/systemd/system/jetos-sshd.service",
-        f"""[Unit]\nDescription=JETOS HC1 SSH bootstrap\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=simple\nExecStartPre={ssh_keygen} -A\nExecStart={sshd} -D -e\nRestart=on-failure\nRestartSec=2\n\n[Install]\nWantedBy=multi-user.target\n""",
+        f"""[Unit]
+Description=JETOS HC1 SSH bootstrap
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStartPre={ssh_keygen} -A
+ExecStart={sshd} -D -e
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
+""",
     )
-    install_systemd_link(root, "jetos-sshd.service", "multi-user.target.wants")
+    enable_local_unit(root, "jetos-sshd.service")
 
     write_text(root, "/etc/hostname", hostname.strip() + "\n")
-    marker = {
-        "base_image_sha256": base_sha256,
-        "board": "odroid-hc1",
-        "cpu_arch": "armv7",
-        "mode": "incremental-linux-bootstrap",
-        "remote_admin": "openssh-key-only",
-        "sata_policy": "untouched",
-    }
     write_text(
         root,
         "/etc/jetos/target.json",
-        json.dumps(marker, indent=2, sort_keys=True) + "\n",
+        json.dumps(
+            {
+                "base_image_sha256": base_sha256,
+                "board": "odroid-hc1",
+                "cpu_arch": "armv7",
+                "mode": "incremental-linux-bootstrap",
+                "remote_admin": "openssh-key-only",
+                "sata_policy": "untouched",
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
     )
     write_text(
         root,
@@ -240,19 +268,15 @@ def loop_attach(image: Path) -> Path:
     return device
 
 
-def mount_partition(partition: Path, mountpoint: Path) -> None:
-    run(["mount", "-o", "rw", str(partition), str(mountpoint)])
-
-
-def prepare(base_image: Path, output: Path, authorized_keys_path: Path, root_partition: int, hostname: str) -> None:
+def prepare(base_image: Path, output: Path, keys_path: Path, root_partition: int, hostname: str) -> None:
     require_linux_root()
-    require_commands("losetup", "mount", "umount", "sync")
+    require_commands("losetup", "mount", "umount")
     if not base_image.is_file():
         raise HC1Error(f"base image not found: {base_image}")
     if output.resolve() == base_image.resolve():
         raise HC1Error("output image must not overwrite the supplied base image")
 
-    authorized_keys = read_authorized_keys(authorized_keys_path)
+    authorized_keys = read_authorized_keys(keys_path)
     base_sha256 = sha256_file(base_image)
     expand_image(base_image, output)
 
@@ -268,24 +292,26 @@ def prepare(base_image: Path, output: Path, authorized_keys_path: Path, root_par
                 time.sleep(0.1)
             if not partition.exists():
                 raise HC1Error(f"root partition did not appear: {partition}")
-            mount_partition(partition, mountpoint)
+            run(["mount", "-o", "rw", str(partition), str(mountpoint)])
             mounted = True
             configure_rootfs(mountpoint, authorized_keys, base_sha256, hostname)
-            run(["sync"])
+            os.sync()
         finally:
-            if mounted:
-                run(["umount", str(mountpoint)])
-            if loop is not None:
-                run(["losetup", "-d", str(loop)])
+            try:
+                if mounted:
+                    run(["umount", str(mountpoint)])
+            finally:
+                if loop is not None:
+                    run(["losetup", "-d", str(loop)])
 
     manifest = {
         "base_image": str(base_image),
         "base_image_sha256": base_sha256,
         "output_image": str(output),
         "output_image_sha256": sha256_file(output),
-        "target": "odroid-hc1",
         "root_partition": root_partition,
         "ssh": "root public-key only",
+        "target": "odroid-hc1",
     }
     manifest_path = output.with_suffix(output.suffix + ".json")
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -310,23 +336,20 @@ def mounted_sources() -> set[Path]:
 
 
 def device_related(source: Path, device: Path) -> bool:
-    source_text = str(source)
-    device_text = str(device)
+    source_text, device_text = str(source), str(device)
     if source_text == device_text:
         return True
     if device_text[-1:].isdigit():
         return source_text.startswith(device_text + "p")
-    suffix = source_text[len(device_text):] if source_text.startswith(device_text) else ""
+    suffix = source_text[len(device_text) :] if source_text.startswith(device_text) else ""
     return bool(suffix and suffix.isdigit())
 
 
 def block_device_size(device: Path) -> int:
-    name = device.resolve().name
-    size_path = Path("/sys/class/block") / name / "size"
+    size_path = Path("/sys/class/block") / device.resolve().name / "size"
     if not size_path.is_file():
         raise HC1Error(f"cannot determine capacity for {device}")
-    sectors = int(size_path.read_text(encoding="ascii").strip())
-    return sectors * 512
+    return int(size_path.read_text(encoding="ascii").strip()) * 512
 
 
 def validate_flash_device(device: Path, image: Path, confirmation: str) -> Path:
@@ -339,9 +362,9 @@ def validate_flash_device(device: Path, image: Path, confirmation: str) -> Path:
         raise HC1Error(f"refusing non-block-device target: {resolved}")
     if confirmation != str(resolved):
         raise HC1Error(f"confirmation must exactly match resolved device: {resolved}")
-    related_mounts = [source for source in mounted_sources() if device_related(source, resolved)]
-    if related_mounts:
-        raise HC1Error("refusing mounted target: " + ", ".join(map(str, related_mounts)))
+    related = [source for source in mounted_sources() if device_related(source, resolved)]
+    if related:
+        raise HC1Error("refusing mounted target: " + ", ".join(map(str, related)))
     if image.stat().st_size > block_device_size(resolved):
         raise HC1Error("image is larger than target device")
     return resolved
@@ -354,16 +377,13 @@ def flash(image: Path, device: Path, confirmation: str) -> None:
     target = validate_flash_device(device, image, confirmation)
     print(f"ERASING AND WRITING {target} from {image}", flush=True)
     with image.open("rb") as src, target.open("wb", buffering=0) as dst:
-        while True:
-            chunk = src.read(COPY_CHUNK)
-            if not chunk:
-                break
+        while chunk := src.read(COPY_CHUNK):
             dst.write(chunk)
         os.fsync(dst.fileno())
     print(f"flash complete: {target}")
 
 
-def print_plan(base_image: Path | None, output: Path, authorized_keys: Path | None, device: Path | None) -> None:
+def print_plan(base: Path | None, output: Path, keys: Path | None, device: Path | None) -> None:
     print("JETOS ODROID-HC1 SSH bootstrap plan")
     print("  1. Start from a known-bootable HC1 Linux image (temporary boot substrate).")
     print("  2. Inject current JETOS Python userspace and an armv7/HC1 target marker.")
@@ -371,11 +391,11 @@ def print_plan(base_image: Path | None, output: Path, authorized_keys: Path | No
     print("  4. Produce a raw image plus SHA-256 provenance manifest.")
     print("  5. Flash only an explicitly confirmed, unmounted block device.")
     print("  6. Never modify or format the HC1 SATA disk.")
-    if base_image:
-        print(f"  base image: {base_image}")
+    if base:
+        print(f"  base image: {base}")
     print(f"  output: {output}")
-    if authorized_keys:
-        print(f"  authorized keys: {authorized_keys}")
+    if keys:
+        print(f"  authorized keys: {keys}")
     if device:
         print(f"  flash target: {device}")
 
@@ -403,7 +423,7 @@ def parser() -> argparse.ArgumentParser:
     write.add_argument(
         "--confirm-device",
         required=True,
-        help="must exactly match the resolved /dev block device; prevents accidental disk writes",
+        help="must exactly match the resolved /dev block device",
     )
     return result
 
