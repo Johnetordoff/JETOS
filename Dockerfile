@@ -1,4 +1,7 @@
-FROM python:3.13-slim
+ARG PYTHON_IMAGE=python:3.14.8-slim
+FROM ${PYTHON_IMAGE} AS base
+
+ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -24,19 +27,25 @@ RUN apt-get update \
         xz-utils \
         qemu-system-x86 \
         qemu-system-arm \
+        strace \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /jetos
-COPY . /jetos
-
 ENV PYTHONPATH=/jetos/src
 ENV LANG=C.UTF-8
 ENV LC_ALL=C.UTF-8
+ENV JETOS_CONTAINER=1
 
-RUN python tools/test.py
-RUN python tools/test_unicode.py
-RUN python tools/test_language.py
-RUN python tools/test_bootstrap.py
-RUN python tools/test_stdlib_qualify.py
+# Fast, reproducible repository qualification.  The two large frozen source
+# submodules are excluded from this build context because this stage tests the
+# JETOS-owned repository/tooling contract, not a kernel/CPython rebuild.
+FROM base AS test
+COPY . /jetos
+RUN python tools/docker_contract.py
+RUN python jetos.py test
+CMD ["python", "jetos.py", "test"]
 
+# Fat development toolchain.  `python jetos.py dev` bind-mounts the checkout
+# (including initialized vendor submodules) at /jetos before build/QEMU work.
+FROM base AS dev
 CMD ["python", "jetos.py", "doctor"]
