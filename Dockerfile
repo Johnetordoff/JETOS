@@ -37,5 +37,6 @@ RUN python tools/test.py
 RUN python tools/test_unicode.py
 RUN python tools/test_language.py
 RUN python tools/test_bootstrap.py
+RUN python tools/test_stdlib_qualify.py
 
 CMD ["python", "jetos.py", "doctor"]

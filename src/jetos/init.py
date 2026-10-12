@@ -5,6 +5,7 @@ import ctypes
 import os
 from pathlib import Path
 import platform
+import subprocess
 import sys
 
 
@@ -73,6 +74,35 @@ def mount_kernel_filesystems() -> None:
     )
 
 
+def run_armed_stdlib_qualification() -> bool:
+    """Run the stdlib gate only in an explicitly armed qualification image."""
+    marker = Path("/jetos/stdlib-qualify")
+    if not marker.is_file():
+        return False
+
+    mode = marker.read_text(encoding="utf-8").strip()
+    if mode not in {"fast", "full"}:
+        raise SystemExit(f"invalid stdlib qualification mode: {mode!r}")
+
+    command = [
+        sys.executable,
+        "/jetos/tools/stdlib_qualify.py",
+        "--strict",
+        "--manifest",
+        "/tmp/stdlib-surface.json",
+    ]
+    if mode == "full":
+        command.append("--full")
+
+    print(f"JETOS stdlib qualification: {mode}", flush=True)
+    result = subprocess.run(command, check=False)
+    state = "PASS" if result.returncode == 0 else "FAIL"
+    print(f"JETOS_STDLIB_QUALIFICATION={state}", flush=True)
+    if result.returncode:
+        raise SystemExit(result.returncode)
+    return True
+
+
 def main() -> None:
     mount_kernel_filesystems()
 
@@ -133,6 +163,9 @@ def main() -> None:
         "(VM has no virtual NIC)",
         flush=True,
     )
+
+    run_armed_stdlib_qualification()
+
     print(
         "shell: JETOS language interpreter",
         flush=True,
