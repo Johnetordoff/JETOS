@@ -15,6 +15,8 @@ ROOT = Path(__file__).resolve().parents[1]
 BUILD_TOOL = ROOT / "tools/build.py"
 NATIVE_TOOL = ROOT / "tools/native.py"
 STDLIB_TOOL = ROOT / "tools/stdlib_qualify.py"
+CURRENT_SOURCE_CLOSURE = "jetos+jetos-language+linux+jetos-native"
+CURRENT_SOURCE_CLOSURE_QUALIFIED = False
 
 
 def load_tool(name: str, path: Path):
@@ -91,12 +93,11 @@ def install_mode_sources(
             shutil.rmtree(source_root)
         return {}
 
-    installed = {
+    return {
         "jetos": str(copy_jetos_source(rootfs).relative_to(rootfs)),
         "jetos_language": str(copy_cpython_source(cpython_source, rootfs).relative_to(rootfs)),
         "linux": str(copy_linux_source(linux_source, rootfs).relative_to(rootfs)),
     }
-    return installed
 
 
 def install_stdlib_qualification(rootfs: Path, mode: str | None = None) -> Path:
@@ -141,12 +142,17 @@ def write_mode_manifest(
     selected = deployment_mode.policy(selected_mode)
     manifest = {
         "mode": selected.name,
-        "carries_complete_source": selected.carries_complete_source,
+        "retains_bulk_source": selected.retains_bulk_source,
+        "requires_complete_source_closure": selected.requires_complete_source_closure,
         "target_resolved": selected.target_resolved,
         "compiled_native_runtime_required": selected.requires_compiled_native_runtime,
         "native_extension": extension.name,
         "native_backend": "c-extension",
         "source_trees": sources,
+        "source_closure": CURRENT_SOURCE_CLOSURE if sources else "provenance-only",
+        "complete_portable_source_closure_qualified": (
+            CURRENT_SOURCE_CLOSURE_QUALIFIED if sources else False
+        ),
     }
     target = rootfs / "jetos/image-mode.json"
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -189,6 +195,8 @@ def main() -> int:
     if sources:
         for name, path in sources.items():
             print(f"Fat source {name}: {path}")
+        if not CURRENT_SOURCE_CLOSURE_QUALIFIED:
+            print("Fat complete portable source closure: NOT YET QUALIFIED")
     else:
         print("Skinny source policy: bulk development source omitted")
     if args.stdlib_qualify:
