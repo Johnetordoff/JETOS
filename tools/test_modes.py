@@ -13,12 +13,14 @@ from jetos import mode  # noqa: E402
 def main() -> int:
     fat = mode.policy("fat")
     skinny = mode.policy("skinny")
-    assert fat.carries_complete_source is True
+    assert fat.retains_bulk_source is True
+    assert fat.requires_complete_source_closure is True
     assert fat.target_resolved is False
     assert fat.requires_compiled_native_runtime is True
     assert fat.can_derive_skinny is True
 
-    assert skinny.carries_complete_source is False
+    assert skinny.retains_bulk_source is False
+    assert skinny.requires_complete_source_closure is False
     assert skinny.target_resolved is True
     assert skinny.requires_compiled_native_runtime is True
     assert skinny.can_derive_skinny is False
@@ -29,6 +31,7 @@ def main() -> int:
     assert "CPython C extension" in contract
     assert "pure C operation" in contract
     assert "running compiled artifact must be traceable" in contract
+    assert "complete portable source closure is not yet qualified" in contract
     print("JETOS Fat/Skinny mode tests: PASS")
     return 0
 
