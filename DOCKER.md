@@ -68,14 +68,14 @@ The repository `Jenkinsfile` invokes:
 python3 tools/work_server.py run-cycle
 ```
 
-The Work Server then owns the actual gates, including:
+The Work Server then owns the ordinary repository gates, including:
 
 ```text
 python jetos.py docker-test
 python jetos.py dev --build-only
 ```
 
-This gives one canonical pipeline definition: Jenkins schedules a Git checkout and a Work Server cycle; the Work Server decides how JETOS is qualified. If automatic improvement is enabled on the worker, the same cycle can create an isolated candidate, rerun these gates, and retain the branch only after they pass. See `WORK_SERVER.md`.
+This gives one canonical pipeline definition: Jenkins schedules a Git checkout and a Work Server cycle; the Work Server decides how JETOS is qualified. If automatic improvement is enabled on the worker, the same cycle can create an isolated candidate, rerun these gates, and retain the branch only after they pass. Source Brain modification is a stronger class of work and is governed separately by `source-brain/README.md`; the ordinary bounded improver is not authorized to rewrite the Linux or CPython trees.
 
 A Jenkins worker therefore needs Git, Python 3, a working Docker CLI/daemon, and the source/submodule access required by the Fat build. Jenkins does not duplicate test logic and does not introduce GitHub Actions.
 
@@ -88,7 +88,9 @@ python jetos.py dev
 
 The `dev` target supplies the Fat-mode capabilities required to compile C, link native artifacts, build the Linux kernel, inspect system calls, and emulate x86/ARM targets. The current checkout is bind-mounted at `/jetos` so the Fat environment operates on the exact working tree rather than on a stale image copy.
 
-The two large frozen source submodules, `vendor/linux` and `vendor/cpython`, are deliberately excluded from the ordinary Docker test build context. For full Fat builds they remain in the host checkout and become visible through the bind mount. Initialize them before a full build with normal Git source acquisition.
+The two large Source Brain source trees, `source-brain/linux` and `source-brain/cpython`, are deliberately excluded from the ordinary Docker test build context. For full Fat builds they remain in the host checkout and become visible through the bind mount. Initialize them before a full build with normal Git source acquisition.
+
+Fat builds retain source and qualification material. A Skinny runtime image is constructed only after Fat qualification and intentionally omits the complete Linux/CPython source trees and development test suite.
 
 ## Dockerfile targets
 
@@ -106,6 +108,7 @@ It does not by itself prove:
 - ARMv7 cross/native artifacts are correct;
 - the HC1 device tree or bootloader is correct;
 - Ethernet/SATA/thermal behavior works on the physical HC1;
-- a Skinny image preserves the complete protected Python surface.
+- a Skinny image preserves the complete protected Python surface;
+- a coordinated Source Brain Linux↔CPython change passes the stronger architecture/hardware qualification matrix.
 
-Those remain separate QEMU and physical-hardware gates.
+Those remain separate QEMU, Source Brain, and physical-hardware gates.
