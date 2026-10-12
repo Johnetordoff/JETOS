@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build and boot a JETOS image that qualifies stdlib inside the guest OS."""
+"""Build and boot a Fat JETOS image that qualifies stdlib inside the guest OS."""
 from __future__ import annotations
 
 import argparse
@@ -37,6 +37,8 @@ def build(mode: str) -> tuple[Path, Path]:
     dev.run([
         sys.executable,
         "tools/package.py",
+        "--profile",
+        "fat",
         "--rootfs",
         str(QUALIFY_ROOTFS),
         "--output",
@@ -46,7 +48,7 @@ def build(mode: str) -> tuple[Path, Path]:
         "--stdlib",
         str(stdlib),
         "--linux-source",
-        str(dev.VENDOR_LINUX),
+        str(dev.SOURCE_BRAIN_LINUX),
         "--stdlib-qualify",
         mode,
     ])
@@ -55,7 +57,7 @@ def build(mode: str) -> tuple[Path, Path]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Boot JETOS and qualify its Python stdlib against the JETOS OS"
+        description="Boot Fat JETOS and qualify its Python stdlib against the JETOS OS"
     )
     parser.add_argument(
         "--full",
