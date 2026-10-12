@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import json
 from pathlib import Path
+import sys
 import tempfile
 import threading
 import time
@@ -15,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location("jetos_workbot", ROOT / "tools/workbot.py")
 assert SPEC and SPEC.loader
 workbot = importlib.util.module_from_spec(SPEC)
+sys.modules[SPEC.name] = workbot
 SPEC.loader.exec_module(workbot)
 
 
