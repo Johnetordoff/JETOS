@@ -22,6 +22,7 @@ class ModePolicy:
     carries_development_source: bool
     carries_kernel_source: bool
     can_derive_skinny_images: bool
+    browser_required: bool
     application_model: str
 
 
@@ -31,6 +32,7 @@ FAT_POLICY = ModePolicy(
     carries_development_source=True,
     carries_kernel_source=True,
     can_derive_skinny_images=True,
+    browser_required=True,
     application_model="general-purpose compatible applications",
 )
 
@@ -40,6 +42,7 @@ SKINNY_POLICY = ModePolicy(
     carries_development_source=False,
     carries_kernel_source=False,
     can_derive_skinny_images=False,
+    browser_required=False,
     application_model="explicit target application/capability set",
 )
 
@@ -70,16 +73,23 @@ def can_derive_skinny_images(value: str) -> bool:
     return policy(value).can_derive_skinny_images
 
 
+def browser_required(value: str) -> bool:
+    """Return whether this deployment mode must retain a browser capability."""
+    return policy(value).browser_required
+
+
 def description(value: str) -> str:
     selected = policy(value)
     if selected.name == FAT:
         return (
             "personal-computer/developer mode: general-purpose applications, editable "
-            "JETOS/JETOS Language/Linux source, tests, inspection surfaces, and build "
-            "tools are retained; this mode can derive target-specific Skinny images"
+            "JETOS/JETOS Language/Linux source, tests, inspection surfaces, build tools, "
+            "and a maintained browser capability are retained; this mode can derive "
+            "target-specific Skinny images"
         )
     return (
-        "device/application mode: development source/tools may be omitted and execution "
-        "is constrained to the target application/capability set, while runtime APIs, "
-        "diagnostics, version identity, and reproducible provenance are retained"
+        "device/application mode: development source/tools and browser capability may be "
+        "omitted and execution is constrained to the target application/capability set, "
+        "while runtime APIs, diagnostics, version identity, and reproducible provenance "
+        "are retained"
     )
