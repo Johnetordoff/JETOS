@@ -10,7 +10,8 @@ Before changing JetOS, read:
 6. `MANDATE_004E_INFORMATION_LIFECYCLE.md` — Developer One's permanent sub-hyper-mandate requiring an Information Lifecycle Worker that tracks provenance, validity/freshness, dependencies, expiry or invalidation rules, and refresh/replacement procedures for important JetOS information, including pre-expiry credential lifecycle coverage without storing secret values.
 7. `MANDATE_004F_CUTTING_ROOM_STORAGE.md` — Developer One's permanent sub-hyper-mandate establishing that JETOS is the **cutting room, not the archive**: keep the smallest practical active/staging/derived working set, retain compact provenance/lifecycle/archive-reference metadata, and do not accumulate bulk historical data long-term once protected archival/backup handoff is verified.
 8. `MANDATE_004G_NO_GITHUB_ACTIONS.md` — Developer One's permanent cross-repository Hyper Directive: never use GitHub Actions; build, test, qualification, packaging, benchmarking, and automation stay native/local under repository-owned tooling.
-9. `KEEP_SAFE_SPEC.md` — the semantic contract for JETOS `KEEP_Safe`, the protected local-retention type for data that must remain locally available beyond the ordinary cutting-room window; retained bulk payloads are compressed and encrypted, keys remain separate, plaintext working copies stay temporary, and `KEEP_Safe` is not a loophole for indefinite bulk accumulation.
+9. `MANDATE_004H_UPSTREAM_CURRENCY.md` — Developer One's permanent hard rule that JETOS tracks stable CPython promptly, qualifies each update in Fat Mode, and only projects it into Skinny Mode after the protected Python/OS surface passes; Gentoo is the preferred source/build intelligence input pending any later promotion to a mandatory currency rule.
+10. `KEEP_SAFE_SPEC.md` — the semantic contract for JETOS `KEEP_Safe`, the protected local-retention type for data that must remain locally available beyond the ordinary cutting-room window; retained bulk payloads are compressed and encrypted, keys remain separate, plaintext working copies stay temporary, and `KEEP_Safe` is not a loophole for indefinite bulk accumulation.
 
 Before recreating, restoring, or replacing behavior that may have existed previously, read `AGENT_DELETION_CHANGELOG.md` and inspect the relevant native Git history first.
 
@@ -23,6 +24,8 @@ JetOS has three first-class CPU targets: `x86_64`, `armv7`, and `arm64`/AArch64.
 The **ODROID-HC1 is the current physical reference target**. It is an `armv7` machine. Work that advances physical JetOS should preferentially move the HC1 toward: dedicated microSD boot, correct Linux kernel/device tree, JetOS Python early userspace, Gen 2 standard-library qualification, Ethernet/IP/DNS, and safe attached-SATA discovery. Do not modify or format an existing HC1 SATA disk as part of bring-up unless explicitly authorized.
 
 In JetOS terminology, **Gen 2 means the Linux-backed configuration, not “second generation.”** The HC1 Gen 2 target is expected to expose the complete CPython standard-library surface supported by the selected CPython release on Linux, with platform-inapplicable or unavoidable exceptions documented rather than silently omitted.
+
+Python currency is mandatory under `MANDATE_004H_UPSTREAM_CURRENCY.md`: adopt stable CPython maintenance releases promptly, pin exact revisions for reproducibility, qualify them in Fat Mode, and do not hold Skinny Mode on an obsolete Python release merely to avoid substrate work.
 
 Raspberry Pi systems may be added as board profiles and optional delegate nodes. Delegation must be explicit, capability-driven, authorized, and non-essential to the HC1's own boot/core qualification.
 

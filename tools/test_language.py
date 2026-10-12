@@ -31,8 +31,8 @@ static int init_sys(void)
 
 UPSTREAM_PATCHLEVEL_FIXTURE = """\
 #define PY_MAJOR_VERSION 3
-#define PY_MINOR_VERSION 16
-#define PY_VERSION "3.16.0a0"
+#define PY_MINOR_VERSION 14
+#define PY_VERSION "3.14.8"
 """
 
 
@@ -73,6 +73,11 @@ def main() -> int:
             f'#define JETOS_CPYTHON_BASE "{language.UPSTREAM_COMMIT}"' in header,
             "upstream base missing",
         )
+        check(
+            f'#define JETOS_CPYTHON_VERSION "{language.UPSTREAM_VERSION}"' in header,
+            "upstream Python version missing",
+        )
+        check(language.UPSTREAM_VERSION == "3.14.8", "Python base must remain 3.14.8")
         check('#include "jetos.h"' in sysmodule, "JETOS header not included")
         check('#define _PY_IMPL_NAME "jetos"' in sysmodule, "implementation not renamed")
         check(
@@ -80,7 +85,7 @@ def main() -> int:
             in sysmodule,
             "sys.jetos_language_version not installed",
         )
-        checks += 5
+        checks += 7
 
         changed_again = language.patch_source(source)
         check(changed_again == [], "patch is not idempotent")
