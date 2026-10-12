@@ -22,6 +22,7 @@ LANGUAGE_PREFIX = BUILD / "jetos-language-install"
 ROOTFS = BUILD / "rootfs"
 INITRAMFS = BUILD / "jetos-initramfs.cpio.gz"
 STDLIB_MANIFEST = BUILD / "stdlib-surface.json"
+MODES = ("fat", "skinny")
 
 LINUX_VERSION = "6.12.96"
 LINUX_COMMIT = "6d15a1029d425b15c59463910ebdccc4afe760d6"
@@ -234,7 +235,7 @@ def build_kernel(target_arch: str) -> Path:
     return image
 
 
-def build_initramfs(runtime: Path, stdlib: Path) -> None:
+def build_initramfs(runtime: Path, stdlib: Path, selected_mode: str) -> None:
     run([
         sys.executable,
         "tools/package.py",
@@ -246,8 +247,12 @@ def build_initramfs(runtime: Path, stdlib: Path) -> None:
         str(runtime),
         "--stdlib",
         str(stdlib),
+        "--mode",
+        selected_mode,
         "--linux-source",
         str(VENDOR_LINUX),
+        "--cpython-source",
+        str(VENDOR_CPYTHON),
     ])
 
 
@@ -262,7 +267,9 @@ def tests() -> None:
         run([sys.executable, f"tools/{script}"])
 
 
-def build_all() -> tuple[Path, Path, Path]:
+def build_all(selected_mode: str = "fat") -> tuple[Path, Path, Path]:
+    if selected_mode not in MODES:
+        raise SystemExit(f"unknown JETOS mode: {selected_mode}")
     if platform.system() != "Linux":
         raise SystemExit(
             "native JETOS development currently requires Linux; "
@@ -275,13 +282,17 @@ def build_all() -> tuple[Path, Path, Path]:
     qualify_stdlib(runtime)
     target_arch = arch()
     kernel = build_kernel(target_arch)
-    build_initramfs(runtime, stdlib)
+    build_initramfs(runtime, stdlib, selected_mode)
     print("\nJETOS development artifacts")
+    print(f"  mode:         {selected_mode}")
     print(f"  architecture: {target_arch}")
     print(f"  language:     {runtime}")
     print(f"  stdlib:       {STDLIB_MANIFEST}")
     print(f"  kernel:       {kernel} ({kernel.stat().st_size} bytes)")
-    print("  Linux source: /usr/src/linux (complete frozen working tree)")
+    if selected_mode == "fat":
+        print("  source:       JETOS + JETOS Language + Linux + native C source")
+    else:
+        print("  source:       omitted from target-resolved Skinny runtime")
     print(f"  initramfs:    {INITRAMFS} ({INITRAMFS.stat().st_size} bytes)")
     return runtime, kernel, INITRAMFS
 
@@ -316,8 +327,9 @@ def source_status(name: str, source: Path, commit: str, required: str) -> None:
 
 def status() -> None:
     print("source mode: frozen checkout; no prepare/build/run downloads")
+    print("image modes: fat (default portable source), skinny (target-resolved runtime)")
     print(f"Linux {LINUX_VERSION}: {LINUX_COMMIT}")
-    print("Linux source image policy: complete tree at /usr/src/linux")
+    print("Fat source policy: JETOS + JETOS Language + Linux + native C; dependency closure pending")
     print("reduction policy: preserve the complete qualifying JETOS/Python stdlib surface")
     print(f"CPython ancestor: {CPYTHON_COMMIT}")
     source_status("vendor/linux", VENDOR_LINUX, LINUX_COMMIT, "Makefile")
@@ -343,6 +355,15 @@ def status() -> None:
         )
 
 
+def add_mode_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--mode",
+        choices=MODES,
+        default="fat",
+        help="Fat carries source; Skinny keeps only the target-resolved runtime",
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="JETOS reproducible development environment"
@@ -350,8 +371,10 @@ def main() -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("status")
     sub.add_parser("prepare")
-    sub.add_parser("build")
-    sub.add_parser("run")
+    build_parser = sub.add_parser("build")
+    add_mode_argument(build_parser)
+    run_parser = sub.add_parser("run")
+    add_mode_argument(run_parser)
     args = parser.parse_args()
 
     if args.command == "status":
@@ -359,9 +382,9 @@ def main() -> int:
     elif args.command == "prepare":
         prepare_sources()
     elif args.command == "build":
-        build_all()
+        build_all(args.mode)
     elif args.command == "run":
-        _, kernel, initramfs = build_all()
+        _, kernel, initramfs = build_all(args.mode)
         boot(kernel, initramfs)
     return 0
 
