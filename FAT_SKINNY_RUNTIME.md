@@ -61,6 +61,14 @@ JETOS-owned C should not become a second user-facing application framework. Its 
 
 For equivalent hardware capability, the Python-facing object contract should remain stable even when the native C implementation differs by CPU, board, kernel interface, or driver family.
 
+## Primary hardware objective
+
+JETOS's #1 native-development objective is to discover useful low-level hardware APIs/interfaces and re-express them as Python-native capabilities through C extensions. Native functions, handles, buffers, structures, events, device state, and other hardware-facing concepts should become Python objects/interfaces instead of remaining opaque C-only surfaces.
+
+This work is deliberately incremental. Each hardware binding should be added in small reviewable stages, retain a stable Python contract where practical, and be tested repeatedly across major supported environments rather than being accepted because it works on one developer machine. The initial qualification families are `x86_64`, `armv7` (including the ODROID-HC1), and `arm64`; board-specific C remains isolated behind the shared Python-facing capability model.
+
+Fat mode carries the C-extension source/backends needed to rebuild across those environments. The running Fat machine uses only the extension compiled for its current target. A derived Skinny image carries only the native backend(s) selected for its target and role.
+
 ## Source-to-runtime invariant
 
 Both modes obey the same invariant:
