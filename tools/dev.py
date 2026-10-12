@@ -11,6 +11,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT / ".build"
+VENDOR_MANIFEST = ROOT / "vendor/sources.json"
 LINUX_SOURCE = BUILD / "linux"
 LANGUAGE_SOURCE = BUILD / "jetos-language-src"
 LANGUAGE_BUILD = BUILD / "jetos-language-build"
@@ -18,10 +19,8 @@ LANGUAGE_PREFIX = BUILD / "jetos-language-install"
 ROOTFS = BUILD / "rootfs"
 INITRAMFS = BUILD / "jetos-initramfs.cpio.gz"
 
-LINUX_REPOSITORY = "https://github.com/gregkh/linux.git"
 LINUX_VERSION = "6.12.96"
 LINUX_COMMIT = "6d15a1029d425b15c59463910ebdccc4afe760d6"
-CPYTHON_REPOSITORY = "https://github.com/python/cpython.git"
 CPYTHON_COMMIT = "9d22a5334bd5273962adceeb697a1337e9a0ca21"
 
 
@@ -52,75 +51,28 @@ def arch() -> str:
     )
 
 
-def ensure_checkout(
-    url: str,
-    commit: str,
-    destination: Path,
-    branch: str | None = None,
-) -> None:
-    if destination.exists():
-        head = run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=destination,
-            capture=True,
-        ).stdout.strip()
-        if head == commit:
-            return
-        ancestor = subprocess.run(
-            ["git", "merge-base", "--is-ancestor", commit, "HEAD"],
-            cwd=destination,
-            text=True,
-        )
-        if ancestor.returncode == 0:
-            return
-        raise SystemExit(
-            f"{destination} exists at {head}, but pinned base {commit} is "
-            "not an ancestor; remove it or inspect it before continuing"
-        )
-
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    run(["git", "init", str(destination)])
-    run(["git", "remote", "add", "origin", url], cwd=destination)
-    run(["git", "fetch", "--depth", "1", "origin", commit], cwd=destination)
-    run(["git", "checkout", "--detach", "FETCH_HEAD"], cwd=destination)
-    if branch:
-        run(["git", "switch", "-c", branch], cwd=destination)
+def materialize_source(name: str, destination: Path) -> None:
+    run([
+        sys.executable,
+        "tools/vendor_sources.py",
+        "materialize",
+        name,
+        str(destination),
+    ])
 
 
 def prepare_sources() -> None:
-    ensure_checkout(LINUX_REPOSITORY, LINUX_COMMIT, LINUX_SOURCE)
-    ensure_checkout(
-        CPYTHON_REPOSITORY,
-        CPYTHON_COMMIT,
-        LANGUAGE_SOURCE,
-        "jetos-language",
-    )
-    run([
-        sys.executable,
-        "tools/language.py",
-        "patch",
-        str(LANGUAGE_SOURCE),
-    ])
-    status = run(
-        ["git", "status", "--porcelain"],
-        cwd=LANGUAGE_SOURCE,
-        capture=True,
-    ).stdout
-    if status.strip():
-        run(
-            ["git", "add", "Include/jetos.h", "Python/sysmodule.c"],
-            cwd=LANGUAGE_SOURCE,
+    """Materialize the frozen in-repository sources without network access."""
+    if not VENDOR_MANIFEST.is_file():
+        raise SystemExit(
+            "JETOS vendored source manifest is missing. Normal prepare/build/run "
+            "never downloads Linux or CPython."
         )
-        run([
-            "git",
-            "-c",
-            "user.name=JETOS Bootstrap",
-            "-c",
-            "user.email=jetos@localhost",
-            "commit",
-            "-m",
-            "Start editable JETOS language fork",
-        ], cwd=LANGUAGE_SOURCE)
+    materialize_source("linux", LINUX_SOURCE)
+    materialize_source("cpython", LANGUAGE_SOURCE)
+    sysmodule = LANGUAGE_SOURCE / "Python/sysmodule.c"
+    if '#define _PY_IMPL_NAME "jetos"' not in sysmodule.read_text(encoding="utf-8"):
+        raise SystemExit("vendored JETOS language snapshot is not patched")
 
 
 def find_language_runtime() -> tuple[Path, Path]:
@@ -274,8 +226,10 @@ def boot(kernel: Path, initramfs: Path) -> None:
 
 
 def status() -> None:
+    print("source mode: frozen vendored snapshots (offline build)")
     print(f"Linux {LINUX_VERSION}: {LINUX_COMMIT}")
-    print(f"CPython ancestor: {CPYTHON_COMMIT}")
+    print(f"JETOS/CPython ancestor: {CPYTHON_COMMIT}")
+    print(f"vendor manifest: {'present' if VENDOR_MANIFEST.is_file() else 'missing'}")
     print(f"target architecture: {arch()}")
     for path in (
         LANGUAGE_SOURCE,

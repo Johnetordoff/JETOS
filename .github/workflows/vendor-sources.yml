@@ -1,0 +1,42 @@
+name: Freeze vendored JETOS sources
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/vendor-sources.yml"
+      - "tools/vendor_sources.py"
+      - "tools/language.py"
+
+permissions:
+  contents: write
+
+jobs:
+  vendor:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Freeze pinned Linux and JETOS language sources
+        run: python tools/vendor_sources.py freeze
+
+      - name: Verify vendored source chunks
+        run: python tools/vendor_sources.py verify
+
+      - name: Commit frozen sources to the pull-request branch
+        env:
+          BRANCH: ${{ github.head_ref }}
+        run: |
+          git config user.name "JETOS Vendor Bot"
+          git config user.email "jetos@localhost"
+          git add vendor/
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "Vendor frozen Linux and JETOS runtime sources"
+          git push origin "HEAD:${BRANCH}"
