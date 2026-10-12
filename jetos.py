@@ -31,17 +31,36 @@ def tests() -> None:
 
 
 def require_docker() -> str:
+    """Require both the Docker CLI and a reachable Docker daemon."""
     docker = shutil.which("docker")
-    if docker:
-        return docker
-    raise SystemExit(
-        "Docker is not installed. Run `python jetos.py setup --plan` "
-        "or `python jetos.py setup --install`."
+    if not docker:
+        raise SystemExit(
+            "JETOS Docker qualification cannot start: the Docker CLI executable "
+            "was not found. Required host capability: a Docker CLI connected to "
+            "a Docker daemon. No GitHub Actions fallback is permitted."
+        )
+
+    probe = subprocess.run(
+        [docker, "info", "--format", "{{.ServerVersion}}"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
     )
+    if probe.returncode != 0:
+        detail = (probe.stderr or probe.stdout).strip() or "no diagnostic output"
+        raise SystemExit(
+            "JETOS Docker qualification cannot start: the Docker CLI exists but "
+            "the Docker daemon is not reachable. Start/connect the daemon or set "
+            "the normal Docker host configuration, then rerun `python jetos.py "
+            f"docker-test`. Docker reported: {detail}"
+        )
+    print(f"Docker daemon: {probe.stdout.strip()}")
+    return docker
 
 
 def docker_test() -> None:
-    """Build and execute the repository qualification suite in Docker."""
+    """Build and execute JETOS userspace/OS qualification in Docker."""
     docker = require_docker()
     run([
         docker,
@@ -51,22 +70,9 @@ def docker_test() -> None:
         "--tag", DOCKER_TEST_IMAGE,
         ".",
     ])
-    run([
-        docker,
-        "run",
-        "--rm",
-        DOCKER_TEST_IMAGE,
-        "python",
-        "-c",
-        (
-            "import sys; "
-            "assert sys.version_info[:3] == (3, 14, 8), sys.version; "
-            "from jetos.hardware import snapshot; "
-            "s = snapshot(); "
-            "assert s['machine']; "
-            "print('JETOS Docker smoke: PASS', sys.version.split()[0], s['machine'])"
-        ),
-    ])
+    # The test image's default command is the runtime OS qualifier.  Running
+    # it directly makes that Python process PID 1 inside the container.
+    run([docker, "run", "--rm", DOCKER_TEST_IMAGE])
 
 
 def docker_dev(build_only: bool) -> None:
@@ -137,7 +143,10 @@ def main() -> int:
     setup.add_argument("--yes", action="store_true")
 
     sub.add_parser("test", help="run repository tests on the current host")
-    sub.add_parser("docker-test", help="build and run the JETOS test suite in Docker")
+    sub.add_parser(
+        "docker-test",
+        help="build and run JETOS userspace/OS qualification in Docker",
+    )
 
     dev = sub.add_parser(
         "dev",
