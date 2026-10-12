@@ -17,6 +17,20 @@ def run(*args: str, env: dict[str, str] | None = None) -> None:
     subprocess.run(args, cwd=ROOT, check=True, env=env)
 
 
+def assert_no_github_actions() -> None:
+    """Enforce Developer One MANDATE_004G locally and host-neutrally."""
+    workflow_root = ROOT / ".github" / "workflows"
+    if not workflow_root.exists():
+        return
+    files = sorted(path for path in workflow_root.rglob("*") if path.is_file())
+    if files:
+        relative = ", ".join(str(path.relative_to(ROOT)) for path in files)
+        raise AssertionError(
+            "GitHub Actions are forbidden by MANDATE_004G_NO_GITHUB_ACTIONS.md: "
+            + relative
+        )
+
+
 def build_and_run(name: str, extra_flags: list[str]) -> None:
     BUILD.mkdir(exist_ok=True)
     output = BUILD / name
@@ -39,6 +53,7 @@ def build_and_run(name: str, extra_flags: list[str]) -> None:
 
 
 def main() -> int:
+    assert_no_github_actions()
     run(sys.executable, "-m", "compileall", "-q", "src", "tools")
     run(sys.executable, "tools/test_architectures.py")
     run(sys.executable, "tools/test_package.py")

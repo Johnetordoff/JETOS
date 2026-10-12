@@ -9,7 +9,8 @@ Before changing JetOS, read:
 5. `MANDATE_004D_UNUSED_CODE_RETIREMENT.md` — Developer One's permanent Super Directive requiring evidence-confirmed unused project-owned code to be retired eventually and every non-use deletion to be recorded in `AGENT_DELETION_CHANGELOG.md`.
 6. `MANDATE_004E_INFORMATION_LIFECYCLE.md` — Developer One's permanent sub-hyper-mandate requiring an Information Lifecycle Worker that tracks provenance, validity/freshness, dependencies, expiry or invalidation rules, and refresh/replacement procedures for important JetOS information, including pre-expiry credential lifecycle coverage without storing secret values.
 7. `MANDATE_004F_CUTTING_ROOM_STORAGE.md` — Developer One's permanent sub-hyper-mandate establishing that JETOS is the **cutting room, not the archive**: keep the smallest practical active/staging/derived working set, retain compact provenance/lifecycle/archive-reference metadata, and do not accumulate bulk historical data long-term once protected archival/backup handoff is verified.
-8. `KEEP_SAFE_SPEC.md` — the semantic contract for JETOS `KEEP_Safe`, the protected local-retention type for data that must remain locally available beyond the ordinary cutting-room window; retained bulk payloads are compressed and encrypted, keys remain separate, plaintext working copies stay temporary, and `KEEP_Safe` is not a loophole for indefinite bulk accumulation.
+8. `MANDATE_004G_NO_GITHUB_ACTIONS.md` — Developer One's permanent cross-repository Hyper Directive: never use GitHub Actions; build, test, qualification, packaging, benchmarking, and automation stay native/local under repository-owned tooling.
+9. `KEEP_SAFE_SPEC.md` — the semantic contract for JETOS `KEEP_Safe`, the protected local-retention type for data that must remain locally available beyond the ordinary cutting-room window; retained bulk payloads are compressed and encrypted, keys remain separate, plaintext working copies stay temporary, and `KEEP_Safe` is not a loophole for indefinite bulk accumulation.
 
 Before recreating, restoring, or replacing behavior that may have existed previously, read `AGENT_DELETION_CHANGELOG.md` and inspect the relevant native Git history first.
 
@@ -26,5 +27,7 @@ In JetOS terminology, **Gen 2 means the Linux-backed configuration, not “secon
 Raspberry Pi systems may be added as board profiles and optional delegate nodes. Delegation must be explicit, capability-driven, authorized, and non-essential to the HC1's own boot/core qualification.
 
 Node.js and its package ecosystem are forbidden. Browser JavaScript is allowed only for a genuine browser frontend and must not introduce Node or a JavaScript build/package stack.
+
+GitHub Actions are forbidden under `MANDATE_004G_NO_GITHUB_ACTIONS.md`. Do not add `.github/workflows/`, hosted Actions jobs, workflow dispatches, Actions artifacts, or hosted CI/status requirements. Use native Git and repository-owned local Python tooling instead.
 
 Third-party dependencies are zero/minimal by default. Prefer Python's standard library and direct documented APIs over SDK/client-library dependencies. Imported native operating-system/toolchain substrate must remain explicit, pinned, provenance-accounted, and minimized.
