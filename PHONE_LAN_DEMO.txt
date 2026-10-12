@@ -1,0 +1,108 @@
+JETOS PHONE/LAN DEMO CONTRACT
+=============================
+
+STATUS
+------
+This file defines the immediate demonstration target and the acceptance gates for
+work that claims to satisfy it. It is intentionally narrower than the long-term
+JETOS architecture.
+
+NORTH STAR
+----------
+Run JETOS in a containerized development/demo environment, publish a deliberate
+LAN-reachable port from the host, and inspect the running JETOS server from an
+iPhone connected to the same local network.
+
+MODE RULE
+---------
+1. Fat Mode always retains a browser capability as part of the supported system.
+2. Skinny Mode does not require a browser and may omit it for target-specific
+   deployments.
+3. The phone-facing demo does not replace the Fat browser. It is a remote
+   inspection/control surface for a running JETOS instance.
+
+P0 DEMO PATH
+------------
+The intended operator path is one obvious command, ultimately:
+
+    python jetos.py demo --profile fat --lan
+
+That command must:
+
+1. build/use the repository-owned Docker development image;
+2. start a JETOS demo service inside the container;
+3. bind the service to 0.0.0.0 inside the container;
+4. explicitly publish one host TCP port for LAN access;
+5. print the host-LAN URL to open from the phone;
+6. print a short-lived demo access token rather than exposing an unauthenticated
+   control endpoint to the whole LAN;
+7. fail clearly when Docker, port publication, or LAN address discovery is not
+   available.
+
+DEFAULT PORT
+------------
+Use TCP 8788 for the first demo unless it is already occupied. Port selection
+must be explicit and overrideable. Do not silently open additional ports.
+
+PHONE SURFACE
+-------------
+The first phone UI should be deliberately small and mobile-readable. It must show:
+
+- JETOS identity/version/generation;
+- Fat or Skinny mode;
+- process/service health;
+- container/host reachability evidence;
+- discovered network addresses relevant to the demo;
+- browser-required policy state for the running profile;
+- links or controls only for operations actually implemented.
+
+The initial demo may be read-mostly. Any state-changing endpoint must require the
+demo token and must expose an explicit, auditable action rather than arbitrary
+remote code execution.
+
+IMPLEMENTATION CONSTRAINTS
+--------------------------
+1. JETOS-owned Python remains standard-library-only.
+2. Prefer http.server/socketserver/json/urllib and existing JETOS modules before
+   adding any native or bootstrap dependency.
+3. Docker is the demo/build carrier, not the operating-system identity.
+4. No GitHub Actions are required for authoritative qualification.
+5. Do not claim bare-metal, QEMU guest-display, or HC1 success from this demo.
+6. Keep phone/LAN networking separate from local GUI/browser rendering.
+
+MACHINE-VERIFIABLE ACCEPTANCE
+-----------------------------
+A P0 implementation is complete only when repository-owned checks prove all of
+these on a controlled development machine:
+
+1. Fat policy reports browser_required=true.
+2. Skinny policy reports browser_required=false.
+3. The demo container starts successfully.
+4. GET /health returns HTTP 200 and structured JETOS identity/mode data.
+5. The container listens on 0.0.0.0:8788 (or the selected internal port).
+6. Docker publishes that port to a host interface deliberately selected for LAN
+   access rather than loopback-only publication.
+7. A host-side request to the published endpoint succeeds.
+8. An iPhone on the same LAN can load the printed URL and see the same running
+   instance identity.
+9. Unauthorized state-changing requests are rejected.
+10. The demo can be stopped cleanly without leaving an orphaned container.
+
+NON-GOALS FOR P0
+----------------
+- replacing the browser engine;
+- completing the HC1 flash/install path;
+- comprehensive Python/OS filesystem qualification;
+- broad native C-extension coverage;
+- Internet exposure, public tunneling, or WAN administration;
+- claiming the container itself is proof of a booted JETOS guest kernel.
+
+FOLLOW-ON ORDER
+---------------
+After the P0 phone/LAN demo is green:
+
+1. make the Fat browser requirement a packaging/runtime qualification gate;
+2. add a narrowly scoped native C-extension capability proof;
+3. add a compact Python/OS qualification smoke baseline before expanding coverage;
+4. resume HC1 physical bring-up with one machine-verifiable boot/network milestone
+   at a time.
