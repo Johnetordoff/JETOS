@@ -6,11 +6,12 @@ A cycle is intentionally conservative:
 
 1. require a clean Git checkout;
 2. create a disposable linked worktree and candidate branch;
-3. run Docker JETOS OS qualification and the Fat build gate;
-4. if requested, ask an explicitly configured improver for one bounded diff;
-5. validate/apply that diff only inside the disposable worktree;
-6. rerun every gate;
-7. retain a Git commit/branch only when the candidate passes.
+3. populate frozen source submodules in that worktree;
+4. run Docker JETOS OS qualification and the Fat build gate;
+5. if requested, ask an explicitly configured improver for one bounded diff;
+6. validate/apply that diff only inside the disposable worktree;
+7. rerun every gate;
+8. retain a Git commit/branch only when the candidate passes.
 
 GitHub Actions are never used. Jenkins may schedule `run-cycle`; the repository
 owns all work policy.
@@ -146,6 +147,18 @@ def require_clean_checkout(root: Path) -> str:
     return head.strip()
 
 
+def prepare_submodules(worktree: Path) -> Step:
+    command = ["git", "submodule", "update", "--init", "--recursive"]
+    rc, output, duration = run_process(command, cwd=worktree)
+    return Step(
+        name="source-submodules",
+        command=command,
+        returncode=rc,
+        duration_seconds=round(duration, 6),
+        output=output,
+    )
+
+
 def qualification_commands() -> list[tuple[str, list[str]]]:
     python = sys.executable
     return [
@@ -184,7 +197,14 @@ def infrastructure_failure(steps: list[Step]) -> str | None:
 
 
 def relevant_files(root: Path, logs: str) -> list[Path]:
-    candidates = [Path("AGENTS.md"), Path("README.md"), Path("PYTHON_KERNEL_CODESIGN.md")]
+    candidates = [
+        Path("AGENTS.md"),
+        Path("README.md"),
+        Path("PYTHON_KERNEL_CODESIGN.md"),
+        Path("tools/kernel_codesign_baseline.py"),
+        Path("tools/dev.py"),
+        Path("src/jetos/hardware.py"),
+    ]
     pattern = re.compile(r"(?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]+\.(?:py|c|h|md|toml|json)")
     for match in pattern.findall(logs):
         candidates.append(Path(match))
@@ -222,8 +242,8 @@ def build_improvement_prompt(root: Path, steps: list[Step], baseline_passed: boo
         total += len(block)
 
     objective = (
-        "The current gates pass. Make one small, test-backed JETOS improvement that "
-        "advances an existing documented objective without changing protected semantics."
+        "The current gates pass. Make one small, test-backed executable JETOS improvement "
+        "that advances an existing documented objective without changing protected semantics."
         if baseline_passed
         else
         "Repair the earliest causal qualification/build failure without weakening, deleting, "
@@ -237,10 +257,11 @@ Hard constraints:
 - Do not modify vendor/linux or vendor/cpython in this candidate.
 - Keep the change small: at most {MAX_FILES} files.
 - Include or strengthen a repository-owned regression test for executable behavior changes.
+- The candidate must contain a substantive executable-code change; documentation-only churn is not an automatic improvement.
 - Do not add Node.js or a JavaScript package/build stack.
 - Preserve Python 3.14 behavior and every applicable JETOS mandate in AGENTS.md.
 - Do not remove, skip, or weaken tests merely to obtain a pass.
-- Do not try to repair missing Docker, networking, disk space, or other worker-host infrastructure by changing JETOS source.
+- Do not try to repair missing Docker, networking, disk space, credentials, or other worker-host infrastructure by changing JETOS source.
 
 Qualification output:
 {logs[-MAX_CONTEXT:]}
@@ -344,12 +365,14 @@ def patch_paths(patch: str) -> list[str]:
 
 
 def validate_test_backing(paths: list[str]) -> None:
-    executable = any(
+    substantive = any(
         path.endswith((".py", ".c", ".h")) and "test" not in Path(path).name.lower()
         for path in paths
     )
+    if not substantive:
+        raise RuntimeError("automatic improvement must include a substantive executable-code change")
     test_change = any("test" in Path(path).name.lower() for path in paths)
-    if executable and not test_change:
+    if not test_change:
         raise RuntimeError("automatic executable-code changes must include a regression-test change")
 
 
@@ -426,6 +449,13 @@ class WorkEngine:
             rc, out = git(self.root, "worktree", "add", "-b", branch, str(worktree), cycle.base_commit)
             if rc != 0:
                 raise RuntimeError(f"cannot create isolated worktree: {out.strip()}")
+
+            submodules = prepare_submodules(worktree)
+            cycle.steps.append(submodules)
+            if submodules.returncode != 0:
+                cycle.status = "blocked"
+                cycle.reason = "source submodule preparation failed: " + submodules.output.strip()[-2048:]
+                return cycle
 
             baseline_ok, baseline_steps = self.gate_runner(worktree)
             cycle.steps.extend(baseline_steps)
@@ -532,7 +562,10 @@ class WorkServer(ThreadingHTTPServer):
     def _loop(self) -> None:
         while True:
             cycle_id, improve, push = self.queue.get()
-            result = self.engine.run_cycle(improve=improve, push=push, cycle_id=cycle_id)
+            try:
+                result = self.engine.run_cycle(improve=improve, push=push, cycle_id=cycle_id)
+            except Exception as exc:
+                result = Cycle(id=cycle_id, improve=improve, status="error", reason=str(exc))
             with self.cycles_lock:
                 self.cycles[cycle_id] = result
 
@@ -608,6 +641,9 @@ class WorkHandler(BaseHTTPRequestHandler):
         if push and not improve:
             self.json_response(400, {"error": "push is only valid for improvement cycles"})
             return
+        if push and not truthy(os.environ.get(PUSH_ENV)):
+            self.json_response(403, {"error": f"remote push is disabled; set {PUSH_ENV}=1 on the server host"})
+            return
         cycle = self.server.enqueue(improve, push)
         self.json_response(202, asdict(cycle))
 
@@ -635,6 +671,8 @@ def serve(host: str, port: int) -> int:
 
 
 def run_once(improve: bool, push: bool) -> int:
+    if push and not improve:
+        raise SystemExit("--push requires --improve")
     cycle = WorkEngine().run_cycle(improve=improve, push=push)
     print(json.dumps(asdict(cycle), indent=2, default=str))
     return 0 if cycle.status in {"passed", "accepted"} else 1
