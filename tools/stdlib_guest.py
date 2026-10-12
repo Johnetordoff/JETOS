@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import os
 from pathlib import Path
 import platform
 import sys
@@ -19,6 +20,7 @@ SPEC.loader.exec_module(dev)
 
 QUALIFY_ROOTFS = dev.BUILD / "stdlib-qualify-rootfs"
 QUALIFY_INITRAMFS = dev.BUILD / "jetos-stdlib-qualify.cpio.gz"
+QUALIFY_MEMORY = "4096M"
 
 
 def build(mode: str) -> tuple[Path, Path]:
@@ -53,6 +55,24 @@ def build(mode: str) -> tuple[Path, Path]:
     return kernel, QUALIFY_INITRAMFS
 
 
+def boot(kernel: Path, initramfs: Path) -> None:
+    """Boot the source-heavy qualification image with sufficient guest RAM."""
+    args = [
+        sys.executable,
+        "tools/build.py",
+        "vm",
+        "--arch",
+        dev.arch(),
+        "--kernel",
+        str(kernel),
+        "--initramfs",
+        str(initramfs),
+        "--memory",
+        QUALIFY_MEMORY,
+    ]
+    os.execv(sys.executable, args)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Boot JETOS and qualify its Python stdlib against the JETOS OS"
@@ -65,8 +85,11 @@ def main() -> int:
     args = parser.parse_args()
     mode = "full" if args.full else "fast"
     kernel, initramfs = build(mode)
-    print(f"booting guest stdlib qualification: {mode}", flush=True)
-    dev.boot(kernel, initramfs)
+    print(
+        f"booting guest stdlib qualification: {mode} ({QUALIFY_MEMORY} RAM)",
+        flush=True,
+    )
+    boot(kernel, initramfs)
     return 0
 
 
