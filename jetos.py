@@ -10,6 +10,10 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parent
+DOCKER_TEST_IMAGE = "jetos:fat-test"
+DOCKER_DEV_IMAGE = "jetos:dev"
+TEST_TARGET = "test"
+DEV_TARGET = "dev"
 
 
 def run(args: list[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -26,14 +30,55 @@ def tests() -> None:
         python_tool(script, [])
 
 
-def docker_dev(build_only: bool) -> None:
+def require_docker() -> str:
     docker = shutil.which("docker")
-    if not docker:
-        raise SystemExit(
-            "Docker is not installed. Run `python jetos.py setup --plan` "
-            "or `python jetos.py setup --install`."
-        )
-    run([docker, "build", "-t", "jetos:dev", "."])
+    if docker:
+        return docker
+    raise SystemExit(
+        "Docker is not installed. Run `python jetos.py setup --plan` "
+        "or `python jetos.py setup --install`."
+    )
+
+
+def docker_test() -> None:
+    """Build and execute the repository qualification suite in Docker."""
+    docker = require_docker()
+    run([
+        docker,
+        "build",
+        "--pull",
+        "--target", TEST_TARGET,
+        "--tag", DOCKER_TEST_IMAGE,
+        ".",
+    ])
+    run([
+        docker,
+        "run",
+        "--rm",
+        DOCKER_TEST_IMAGE,
+        "python",
+        "-c",
+        (
+            "import sys; "
+            "assert sys.version_info[:3] == (3, 14, 8), sys.version; "
+            "from jetos.hardware import snapshot; "
+            "s = snapshot(); "
+            "assert s['machine']; "
+            "print('JETOS Docker smoke: PASS', sys.version.split()[0], s['machine'])"
+        ),
+    ])
+
+
+def docker_dev(build_only: bool) -> None:
+    docker = require_docker()
+    run([
+        docker,
+        "build",
+        "--pull",
+        "--target", DEV_TARGET,
+        "--tag", DOCKER_DEV_IMAGE,
+        ".",
+    ])
     command = [
         docker,
         "run",
@@ -47,7 +92,7 @@ def docker_dev(build_only: bool) -> None:
     if os.name == "posix" and Path("/dev/kvm").exists():
         command.extend(["--device", "/dev/kvm"])
     command.extend([
-        "jetos:dev",
+        DOCKER_DEV_IMAGE,
         "python",
         "tools/dev.py",
         "build" if build_only else "run",
@@ -91,7 +136,8 @@ def main() -> int:
     setup.add_argument("--install", action="store_true")
     setup.add_argument("--yes", action="store_true")
 
-    sub.add_parser("test", help="run repository tests")
+    sub.add_parser("test", help="run repository tests on the current host")
+    sub.add_parser("docker-test", help="build and run the JETOS test suite in Docker")
 
     dev = sub.add_parser(
         "dev",
@@ -118,6 +164,8 @@ def main() -> int:
         python_tool("host.py", forwarded)
     elif args.command == "test":
         tests()
+    elif args.command == "docker-test":
+        docker_test()
     elif args.command == "dev":
         if args.native:
             python_tool("dev.py", ["build" if args.build_only else "run"])
