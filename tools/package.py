@@ -114,14 +114,11 @@ def package_rootfs(
         if stdlib_qualify:
             print(f"guest stdlib qualification armed: {stdlib_qualify}")
     else:
-        # build.make_rootfs() recreates rootfs from scratch.  Still enforce an
-        # explicit defense-in-depth removal in case a future builder stages
-        # development-only repository material before Skinny packaging.
         strip_temporary_bullshit(rootfs)
-        # Do not add Linux source, CPython source, Source Brain worktrees,
-        # Temporary Bullshit, or development tests to Skinny.
+        # Do not add complete Linux/CPython source trees, Temporary Bullshit,
+        # or development tests to Skinny.
         print(
-            "Skinny profile: Source Brain trees, Temporary Bullshit, and "
+            "Skinny profile: full source trees, Temporary Bullshit, and "
             "Fat qualification tools omitted"
         )
 
