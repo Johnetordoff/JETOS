@@ -52,7 +52,14 @@ RUN python tools/container_os_qualify.py --phase build --require-toolchain
 RUN python jetos.py test
 CMD ["python", "tools/container_os_qualify.py", "--phase", "runtime", "--require-toolchain"]
 
-# Fat development environment.  `python jetos.py dev` bind-mounts the checkout
-# (including initialized vendor submodules) at /jetos before build/QEMU work.
+# Fat development environment. `python jetos.py dev` bind-mounts the checkout
+# (including initialized Source Brain trees) at /jetos before build/QEMU work.
+# On Apple Silicon, jetos.py pins this image/run to linux/arm64. Debian's
+# qemu-system-arm package supplies qemu-system-aarch64; fail the image build
+# immediately if that or the native ARM64 build toolchain is unavailable.
 FROM base AS dev
+RUN command -v qemu-system-aarch64 \
+    && command -v cc \
+    && command -v make \
+    && command -v ld
 CMD ["python", "jetos.py", "doctor"]
