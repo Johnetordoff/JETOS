@@ -47,6 +47,18 @@ def main() -> int:
         )
         assert candidate.is_file()
 
+        # These modules exposed signature-introspection exceptions in the
+        # Python 3.14.8 JetLang build even though their imports were healthy.
+        # Inventory metadata is best-effort and must not fail qualification.
+        run("--module", "doctest", "--strict")
+        run("--module", "select", "--strict")
+        run("--module", "curses", "--strict")
+
+        tool_text = TOOL.read_text(encoding="utf-8")
+        assert '"_ios_support"' in tool_text
+        assert '"_wmi"' in tool_text
+        assert "except Exception:" in tool_text
+
     print("JETOS stdlib qualification tooling: PASS")
     return 0
 
