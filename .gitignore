@@ -1,3 +1,4 @@
 .build/
+.jetos-cache/
 __pycache__/
 *.pyc
