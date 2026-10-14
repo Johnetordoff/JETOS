@@ -12,6 +12,7 @@ BUILD_TOOL = ROOT / "tools/build.py"
 STDLIB_TOOL = ROOT / "tools/stdlib_qualify.py"
 PROFILE_FAT = "fat"
 PROFILE_SKINNY = "skinny"
+TEMPORARY_BULLSHIT_DIRNAME = "Temporary Bullshit"
 
 SPEC = importlib.util.spec_from_file_location("jetos_build", BUILD_TOOL)
 if SPEC is None or SPEC.loader is None:
@@ -58,6 +59,27 @@ def install_stdlib_qualification(
     return target
 
 
+def strip_temporary_bullshit(rootfs: Path) -> int:
+    """Remove development-only Temporary Bullshit from a Skinny rootfs.
+
+    The directory is allowed to exist in Fat/development workspaces but must
+    never survive Skinny packaging, regardless of whether it was staged at the
+    root or beneath /jetos by an earlier build step.
+    """
+    removed = 0
+    for target in (
+        rootfs / TEMPORARY_BULLSHIT_DIRNAME,
+        rootfs / "jetos" / TEMPORARY_BULLSHIT_DIRNAME,
+    ):
+        if target.is_symlink() or target.is_file():
+            target.unlink()
+            removed += 1
+        elif target.is_dir():
+            shutil.rmtree(target)
+            removed += 1
+    return removed
+
+
 def package_rootfs(
     *,
     profile: str,
@@ -92,10 +114,16 @@ def package_rootfs(
         if stdlib_qualify:
             print(f"guest stdlib qualification armed: {stdlib_qualify}")
     else:
-        # build.make_rootfs() recreates rootfs from scratch.  Do not add Linux
-        # source, CPython source, Source Brain worktrees or development tests.
-        # Skinny receives only the runtime assembled by the rootfs builder.
-        print("Skinny profile: Source Brain trees and Fat qualification tools omitted")
+        # build.make_rootfs() recreates rootfs from scratch.  Still enforce an
+        # explicit defense-in-depth removal in case a future builder stages
+        # development-only repository material before Skinny packaging.
+        strip_temporary_bullshit(rootfs)
+        # Do not add Linux source, CPython source, Source Brain worktrees,
+        # Temporary Bullshit, or development tests to Skinny.
+        print(
+            "Skinny profile: Source Brain trees, Temporary Bullshit, and "
+            "Fat qualification tools omitted"
+        )
 
     build.build_initramfs(rootfs, output)
 
