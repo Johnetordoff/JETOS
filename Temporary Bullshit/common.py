@@ -10,7 +10,7 @@ from types import ModuleType
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 INVENTORY_TOOL = ROOT / "tools/source_inventory.py"
-SOURCE_SUBMODULES = ("source-brain/linux", "source-brain/cpython")
+SOURCE_TREES = ("source-brain/linux", "source-brain/cpython")
 
 
 def load_inventory() -> ModuleType:
@@ -23,12 +23,29 @@ def load_inventory() -> ModuleType:
 
 
 def prepare_sources() -> None:
-    """Initialize the pinned native source trees efficiently in one Git operation."""
-    subprocess.run(
-        ["git", "submodule", "update", "--init", "--recursive", *SOURCE_SUBMODULES],
-        cwd=ROOT,
-        check=True,
-    )
+    """Ensure the native source trees are present without reviving nested Git."""
+    if (ROOT / ".gitmodules").is_file():
+        subprocess.run(
+            ["git", "submodule", "update", "--init", "--recursive", *SOURCE_TREES],
+            cwd=ROOT,
+            check=True,
+        )
+        return
+
+    required = {
+        "source-brain/linux": "Makefile",
+        "source-brain/cpython": "Python/sysmodule.c",
+    }
+    missing = [
+        tree
+        for tree, marker in required.items()
+        if not (ROOT / tree / marker).is_file()
+    ]
+    if missing:
+        raise SystemExit(
+            "Unified JETOS checkout is missing required source trees: "
+            + ", ".join(missing)
+        )
 
 
 def scan() -> dict:
@@ -50,4 +67,4 @@ def print_completeness(data: dict) -> None:
     print("JetLang/CPython-derived source initialized:", summary["source_brain_cpython_initialized"])
     print("Shared source initialized:", summary["shared_initialized"])
     if not complete(data):
-        print("WARNING: inventory is partial; initialize all source trees before using it as the global baseline.")
+        print("WARNING: inventory is partial; ensure all source trees are present before using it as the global baseline.")
