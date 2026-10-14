@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 from pathlib import Path
 import platform
@@ -15,6 +16,7 @@ BUILD = ROOT / ".build"
 SOURCE_BRAIN = ROOT / "source-brain"
 SOURCE_BRAIN_LINUX = SOURCE_BRAIN / "linux"
 SOURCE_BRAIN_CPYTHON = SOURCE_BRAIN / "cpython"
+SOURCE_BRAIN_PROVENANCE = SOURCE_BRAIN / "UPSTREAM_PROVENANCE.json"
 LINUX_SOURCE = BUILD / "linux"
 LANGUAGE_SOURCE = BUILD / "jetos-language-src"
 LANGUAGE_BUILD = BUILD / "jetos-language-build"
@@ -56,11 +58,27 @@ def arch() -> str:
     )
 
 
+def source_provenance_commit(source: Path) -> str:
+    if not SOURCE_BRAIN_PROVENANCE.is_file():
+        raise SystemExit(
+            f"Unified Source Brain provenance is missing: {SOURCE_BRAIN_PROVENANCE}"
+        )
+    data = json.loads(SOURCE_BRAIN_PROVENANCE.read_text(encoding="utf-8"))
+    name = source.name
+    try:
+        return str(data["sources"][name]["upstream_commit"])
+    except (KeyError, TypeError) as exc:
+        raise SystemExit(f"Missing provenance for source-brain/{name}") from exc
+
+
 def source_head(source: Path) -> str:
-    return run(
-        ["git", "-C", str(source), "rev-parse", "HEAD"],
-        capture=True,
-    ).stdout.strip()
+    """Return the recorded upstream base for transitional or unified source."""
+    if (ROOT / ".gitmodules").is_file():
+        return run(
+            ["git", "-C", str(source), "rev-parse", "HEAD"],
+            capture=True,
+        ).stdout.strip()
+    return source_provenance_commit(source)
 
 
 def require_source_brain(
@@ -73,12 +91,12 @@ def require_source_brain(
         raise SystemExit(
             f"Source Brain {name} source is missing at {source}. "
             "JETOS will not download it during prepare/build/run. "
-            "Acquire the repository with its pinned Source Brain submodules before building."
+            "Use a complete unified JETOS checkout."
         )
     actual = source_head(source)
     if actual != expected_commit:
         raise SystemExit(
-            f"Source Brain {name} source mismatch: {actual}; "
+            f"Source Brain {name} provenance mismatch: {actual}; "
             f"required {expected_commit}. JETOS will not silently build an unrecorded revision."
         )
 
@@ -111,7 +129,7 @@ def prepare_sources() -> None:
     """Prepare only from the exact Source Brain revisions recorded by JETOS."""
     require_source_brain("Linux", SOURCE_BRAIN_LINUX, LINUX_COMMIT, "Makefile")
     require_source_brain(
-        "CPython",
+        "JetLang/CPython",
         SOURCE_BRAIN_CPYTHON,
         CPYTHON_COMMIT,
         "Python/sysmodule.c",
@@ -145,7 +163,7 @@ def find_language_runtime() -> tuple[Path, Path]:
         if path.is_file() and "config" not in path.name
     ]
     if not candidates:
-        raise SystemExit("JETOS language runtime was not installed")
+        raise SystemExit("JetLang runtime was not installed")
     runtime = candidates[-1]
     stdlib_result = run(
         [
@@ -157,7 +175,7 @@ def find_language_runtime() -> tuple[Path, Path]:
     )
     stdlib = Path(stdlib_result.stdout.strip())
     if not stdlib.is_dir():
-        raise SystemExit(f"JETOS language stdlib not found: {stdlib}")
+        raise SystemExit(f"JetLang stdlib not found: {stdlib}")
     return runtime, stdlib
 
 
@@ -282,12 +300,12 @@ def build_all() -> tuple[Path, Path, Path]:
     build_initramfs(runtime, stdlib)
     print("\nJETOS Fat development artifacts")
     print(f"  architecture: {target_arch}")
-    print(f"  language:     JETOS on Python {CPYTHON_VERSION}")
+    print(f"  language:     JetLang (CPython-derived, base {CPYTHON_VERSION})")
     print(f"  runtime:      {runtime}")
     print(f"  stdlib:       {STDLIB_MANIFEST}")
     print(f"  kernel:       {kernel} ({kernel.stat().st_size} bytes)")
-    print(f"  Linux source: source-brain/linux @ {LINUX_COMMIT}")
-    print(f"  CPython src:  source-brain/cpython @ {CPYTHON_COMMIT}")
+    print(f"  Linux upstream base:  {LINUX_COMMIT}")
+    print(f"  JetLang CPython base: {CPYTHON_COMMIT}")
     print("  guest source: /usr/src/linux (Fat profile only)")
     print(f"  initramfs:    {INITRAMFS} ({INITRAMFS.stat().st_size} bytes)")
     return runtime, kernel, INITRAMFS
@@ -314,20 +332,24 @@ def source_status(name: str, source: Path, commit: str, required: str) -> None:
         return
     try:
         head = source_head(source)
-    except subprocess.CalledProcessError:
-        print(f"{name}: present, commit unreadable")
+    except (subprocess.CalledProcessError, SystemExit):
+        print(f"{name}: present, provenance unreadable")
         return
     state = "recorded" if head == commit else "WRONG REVISION"
-    print(f"{name}: {state} {head}")
+    print(f"{name}: {state} upstream-base {head}")
 
 
 def status() -> None:
-    print("source mode: Source Brain; no prepare/build/run downloads")
-    print(f"Linux {LINUX_VERSION}: {LINUX_COMMIT}")
+    unified = not (ROOT / ".gitmodules").exists()
+    print(
+        "source mode: "
+        + ("unified outer repository" if unified else "TRANSITIONAL submodule bootstrap")
+    )
+    print(f"Linux {LINUX_VERSION} upstream base: {LINUX_COMMIT}")
     print("Fat source policy: exact Source Brain tree is the build input")
-    print("Skinny source policy: complete Linux/CPython source trees are omitted")
-    print("reduction policy: preserve the complete qualifying JETOS/Python stdlib surface")
-    print(f"CPython {CPYTHON_VERSION} ancestor: {CPYTHON_COMMIT}")
+    print("Skinny source policy: complete Linux/JetLang source trees are omitted")
+    print("reduction policy: preserve the complete qualifying Python/JetLang stdlib surface")
+    print(f"JetLang CPython {CPYTHON_VERSION} ancestor: {CPYTHON_COMMIT}")
     source_status("source-brain/linux", SOURCE_BRAIN_LINUX, LINUX_COMMIT, "Makefile")
     source_status(
         "source-brain/cpython",
