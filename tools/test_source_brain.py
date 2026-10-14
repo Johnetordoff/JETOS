@@ -2,26 +2,52 @@
 """Fast structural tests for the JETOS Source Brain/Fat/Skinny contract."""
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+SOURCE_BRAIN = ROOT / "source-brain"
+
+
+def nested_git_metadata() -> list[Path]:
+    return sorted(SOURCE_BRAIN.rglob(".git"))
 
 
 def main() -> int:
     checks = 0
 
-    gitmodules = (ROOT / ".gitmodules").read_text(encoding="utf-8")
-    assert '[submodule "source-brain/linux"]' in gitmodules
-    assert "path = source-brain/linux" in gitmodules
-    assert '[submodule "source-brain/cpython"]' in gitmodules
-    assert "path = source-brain/cpython" in gitmodules
-    assert "vendor/linux" not in gitmodules
-    assert "vendor/cpython" not in gitmodules
-    checks += 6
+    gitmodules = ROOT / ".gitmodules"
+    provenance = SOURCE_BRAIN / "UPSTREAM_PROVENANCE.json"
 
-    assert (ROOT / "source-brain/README.md").is_file()
-    assert (ROOT / "source-brain/shared").is_dir()
-    assert (ROOT / "source-brain/shared/README.md").is_file()
+    if gitmodules.exists():
+        # Transitional bootstrap state only. The canonical end state is the
+        # single outer repository defined by JETLANG_ARCHITECTURE.md.
+        text = gitmodules.read_text(encoding="utf-8")
+        assert '[submodule "source-brain/linux"]' in text
+        assert '[submodule "source-brain/cpython"]' in text
+        assert (ROOT / "tools/absorb_source_brain.py").is_file()
+        checks += 3
+    else:
+        # Canonical unified state: ordinary tracked trees, no nested Git.
+        assert (SOURCE_BRAIN / "linux/Makefile").is_file()
+        assert (SOURCE_BRAIN / "cpython/Python/sysmodule.c").is_file()
+        assert provenance.is_file()
+        data = json.loads(provenance.read_text(encoding="utf-8"))
+        assert data["architecture"] == "single-outer-git-repository"
+        assert set(data["sources"]) == {"linux", "cpython"}
+        assert not nested_git_metadata()
+        checks += 6
+
+    architecture = (ROOT / "JETLANG_ARCHITECTURE.md").read_text(encoding="utf-8")
+    assert "improved, deliberately diverging descendant of CPython" in architecture
+    assert "CPython 2" in architecture
+    assert "one outer JETOS Git repository" in architecture
+    assert "no Git submodules" in architecture
+    checks += 4
+
+    assert (SOURCE_BRAIN / "README.md").is_file()
+    assert (SOURCE_BRAIN / "shared").is_dir()
+    assert (SOURCE_BRAIN / "shared/README.md").is_file()
     assert not (ROOT / "vendor").exists()
     checks += 4
 
