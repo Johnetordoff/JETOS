@@ -24,7 +24,7 @@ A JetOS image must not knowingly mix kernel and userspace architectures. Archite
 
 ## 3. Canonical source layout and provenance
 
-The repository uses `source/` as the canonical home for external/native source lineages and dependency source needed to build or qualify JetOS. Do not use a “brain” concept or terminology in JetOS source organization.
+The repository uses `source/` as the canonical home for external/native source lineages and dependency source needed to build or qualify JetOS.
 
 At minimum:
 
