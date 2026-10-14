@@ -65,7 +65,11 @@ def main() -> int:
         == "y",
         "arm64 serial console",
     )
-    checks += 4
+    check(
+        arm["CONFIG_KVM"] == "n",
+        "arm64 guest KVM reduction",
+    )
+    checks += 5
 
     entry = build.cpio_entry(
         "hello",
