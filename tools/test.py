@@ -10,7 +10,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT / ".build"
-PORT = ROOT / "ports" / "gcc" / "ordered_hash_map_c"
+PORT = ROOT / "source" / "ports" / "gcc" / "ordered_hash_map_c"
 C_COMPILER = os.environ.get("CC", "cc")
 
 
@@ -24,7 +24,7 @@ def run(
 
 
 def assert_no_github_actions() -> None:
-    """Enforce Developer One MANDATE_004G locally and host-neutrally."""
+    """Enforce the canonical JETOS no-GitHub-Actions mandate locally."""
     workflow_root = ROOT / ".github" / "workflows"
     if not workflow_root.exists():
         return
@@ -32,13 +32,11 @@ def assert_no_github_actions() -> None:
     if files:
         relative = ", ".join(str(path.relative_to(ROOT)) for path in files)
         raise AssertionError(
-            "GitHub Actions are forbidden by MANDATE_004G_NO_GITHUB_ACTIONS.md: "
-            + relative
+            "GitHub Actions are forbidden by MANDATE.md: " + relative
         )
 
 
 def require_c_compiler() -> str:
-    """Return the selected C compiler without baking a vendor into JETOS."""
     compiler = shutil.which(C_COMPILER)
     if compiler is None:
         raise AssertionError(
@@ -82,7 +80,7 @@ def main() -> int:
     )
     run(sys.executable, "tools/test_architectures.py")
     run(sys.executable, "tools/test_package.py")
-    run(sys.executable, "tools/test_source_brain.py")
+    run(sys.executable, "tools/test_source.py")
     run(sys.executable, "tools/test_source_inventory.py")
     run(sys.executable, "tools/test_kernel_codesign_baseline.py")
     run(sys.executable, "tools/test_docker_contract.py")
