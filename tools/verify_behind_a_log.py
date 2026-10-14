@@ -87,7 +87,7 @@ def linux_state(raw: str, pinned_version: str):
 
 
 def python_state(html: str):
-    versions = set(re.findall(r'Python\s+(3\.\d+\.\d+)', html))
+    versions = set(re.findall(r'Python\s+(3\.\d+\.\d+)(?![A-Za-z0-9])', html))
     if not versions:
         raise SystemExit("python.org downloads page exposed no final Python versions")
     latest = max(versions, key=version_tuple)
