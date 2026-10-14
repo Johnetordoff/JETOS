@@ -10,7 +10,7 @@ from types import ModuleType
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 INVENTORY_TOOL = ROOT / "tools/source_inventory.py"
-SOURCE_TREES = ("source-brain/linux", "source-brain/cpython")
+SOURCE_TREES = ("source/linux", "source/cpython")
 
 
 def load_inventory() -> ModuleType:
@@ -33,8 +33,8 @@ def prepare_sources() -> None:
         return
 
     required = {
-        "source-brain/linux": "Makefile",
-        "source-brain/cpython": "Python/sysmodule.c",
+        "source/linux": "Makefile",
+        "source/cpython": "Python/sysmodule.c",
     }
     missing = [
         tree
@@ -55,16 +55,16 @@ def scan() -> dict:
 def complete(data: dict) -> bool:
     summary = data["summary"]
     return bool(
-        summary["source_brain_linux_initialized"]
-        and summary["source_brain_cpython_initialized"]
+        summary["source_linux_initialized"]
+        and summary["source_cpython_initialized"]
         and summary["shared_initialized"]
     )
 
 
 def print_completeness(data: dict) -> None:
     summary = data["summary"]
-    print("Linux source initialized:", summary["source_brain_linux_initialized"])
-    print("JetLang/CPython-derived source initialized:", summary["source_brain_cpython_initialized"])
+    print("Linux source initialized:", summary["source_linux_initialized"])
+    print("JetLang/CPython-derived source initialized:", summary["source_cpython_initialized"])
     print("Shared source initialized:", summary["shared_initialized"])
     if not complete(data):
         print("WARNING: inventory is partial; ensure all source trees are present before using it as the global baseline.")

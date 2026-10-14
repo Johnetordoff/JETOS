@@ -6,16 +6,16 @@ A cycle is intentionally conservative:
 
 1. require a clean Git checkout;
 2. create a disposable linked worktree and candidate branch;
-3. populate Source Brain source submodules in that worktree;
+3. populate source submodules in that worktree;
 4. run Docker JETOS OS qualification and the Fat build gate;
 5. if requested, ask an explicitly configured improver for one bounded diff;
 6. validate/apply that diff only inside the disposable worktree;
 7. rerun every gate;
 8. retain a Git commit/branch only when the candidate passes.
 
-The ordinary Work Server may not modify source-brain/linux or
-source-brain/cpython.  Those coupled source trees require the stronger Source
-Brain Weaver qualification contract in source-brain/README.md.
+The ordinary Work Server may not modify source/linux or source/cpython. Those
+coupled native source lineages require the integrated-runtime qualification
+contract in MANDATE.md and ARCHITECTURE.md.
 
 GitHub Actions are never used. Jenkins may schedule `run-cycle`; the repository
 owns all work policy.
@@ -62,8 +62,8 @@ TIMEOUT = 60 * 60
 FORBIDDEN_PATH_PREFIXES = (
     ".git/",
     ".github/workflows/",
-    "source-brain/linux/",
-    "source-brain/cpython/",
+    "source/linux/",
+    "source/cpython/",
 )
 INFRASTRUCTURE_MARKERS = (
     "docker cli executable was not found",
@@ -204,6 +204,8 @@ def relevant_files(root: Path, logs: str) -> list[Path]:
     candidates = [
         Path("AGENTS.md"),
         Path("README.md"),
+        Path("MANDATE.md"),
+        Path("ARCHITECTURE.md"),
         Path("PYTHON_KERNEL_CODESIGN.md"),
         Path("tools/kernel_codesign_baseline.py"),
         Path("tools/dev.py"),
@@ -258,12 +260,12 @@ def build_improvement_prompt(root: Path, steps: list[Step], baseline_passed: boo
 Hard constraints:
 - Return exactly one unified Git diff and no prose outside the diff.
 - Never create or modify .github/workflows or any GitHub Actions configuration.
-- Do not modify source-brain/linux or source-brain/cpython in this candidate; those trees require the Source Brain Weaver qualification path.
+- Do not modify source/linux or source/cpython in this candidate; those trees require the integrated-runtime qualification path in MANDATE.md and ARCHITECTURE.md.
 - Keep the change small: at most {MAX_FILES} files.
 - Include or strengthen a repository-owned regression test for executable behavior changes.
 - The candidate must contain a substantive executable-code change; documentation-only churn is not an automatic improvement.
 - Do not add Node.js or a JavaScript package/build stack.
-- Preserve Python 3.14 behavior and every applicable JETOS mandate in AGENTS.md.
+- Preserve Python 3.14 behavior and every applicable JETOS mandate in MANDATE.md.
 - Do not remove, skip, or weaken tests merely to obtain a pass.
 - Do not try to repair missing Docker, networking, disk space, credentials, or other worker-host infrastructure by changing JETOS source.
 

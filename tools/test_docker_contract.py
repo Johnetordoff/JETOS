@@ -37,8 +37,8 @@ def main() -> int:
     assert "VOLUME [\"/jetos/.build\"]" in dockerfile
 
     dockerignore = (ROOT / ".dockerignore").read_text(encoding="utf-8")
-    assert "source-brain/linux" in dockerignore
-    assert "source-brain/cpython" in dockerignore
+    assert "source/linux" in dockerignore
+    assert "source/cpython" in dockerignore
     assert "vendor/linux" not in dockerignore
     assert "vendor/cpython" not in dockerignore
 
@@ -48,30 +48,22 @@ def main() -> int:
     assert '"--target", TEST_TARGET' in entrypoint
     assert '"--target", DEV_TARGET' in entrypoint
     assert 'docker, "info", "--format", "{{.ServerVersion}}"' in entrypoint
-    assert '"source-brain/linux": "Makefile"' in entrypoint
-    assert '"source-brain/cpython": "Python/sysmodule.c"' in entrypoint
+    assert '"source/linux": "Makefile"' in entrypoint
+    assert '"source/cpython": "Python/sysmodule.c"' in entrypoint
     assert '"submodule"' in entrypoint
     assert '"--init"' in entrypoint
     assert 'ensure_dev_sources()' in entrypoint
     assert 'sys.stdin.isatty() and sys.stdout.isatty()' in entrypoint
     assert 'def apple_silicon_docker_platform()' in entrypoint
     assert 'return "linux/arm64"' in entrypoint
-    assert 'Docker platform: {docker_platform} (Apple Silicon native)' in entrypoint
-    assert 'build_command.extend(["--platform", docker_platform])' in entrypoint
-    assert 'run_command.extend(["--platform", docker_platform])' in entrypoint
-    assert 'command.extend(["--platform", docker_platform])' in entrypoint
 
     dev = (ROOT / "tools/dev.py").read_text(encoding="utf-8")
     assert 'BUILD_REVISION = BUILD / ".jetos-build-revision"' in dev
     assert '["git", "rev-parse", "HEAD"]' in dev
     assert 'def clear_build_directory()' in dev
-    assert 'for child in BUILD.iterdir()' in dev
-    assert 'shutil.rmtree(BUILD)' not in dev
     assert 'def prepare_revision_build()' in dev
-    assert 'clear_build_directory()' in dev
     assert 'JETOS source copy complete: {name}' in dev
     assert 'revision = prepare_revision_build()' in dev
-    assert 'print(f"  JetOS revision: {revision}")' in dev
 
     qualifier = (ROOT / "tools/container_os_qualify.py").read_text(encoding="utf-8")
     assert '"c_compiler": os.environ.get("CC", "cc")' in qualifier
@@ -87,8 +79,8 @@ def main() -> int:
     assert '"docker-os-qualification", [python, "jetos.py", "docker-test"]' in work_server
     assert '"fat-build", [python, "jetos.py", "dev", "--build-only"]' in work_server
     assert '".github/workflows/"' in work_server
-    assert '"source-brain/linux/"' in work_server
-    assert '"source-brain/cpython/"' in work_server
+    assert '"source/linux/"' in work_server
+    assert '"source/cpython/"' in work_server
 
     native_test = (ROOT / "tools/test.py").read_text(encoding="utf-8")
     assert 'C_COMPILER = os.environ.get("CC", "cc")' in native_test

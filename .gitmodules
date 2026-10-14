@@ -1,8 +1,8 @@
-[submodule "source-brain/linux"]
-	path = source-brain/linux
+[submodule "source/linux"]
+	path = source/linux
 	url = https://github.com/gregkh/linux.git
 	shallow = true
-[submodule "source-brain/cpython"]
-	path = source-brain/cpython
+[submodule "source/cpython"]
+	path = source/cpython
 	url = https://github.com/python/cpython.git
 	shallow = true

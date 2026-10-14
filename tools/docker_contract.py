@@ -56,8 +56,8 @@ def assert_contract() -> None:
     required_ignores = {
         ".git",
         ".build",
-        "source-brain/linux",
-        "source-brain/cpython",
+        "source/linux",
+        "source/cpython",
     }
     missing_ignores = sorted(required_ignores.difference(dockerignore))
     if missing_ignores:

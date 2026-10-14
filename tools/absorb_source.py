@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Absorb Source Brain submodules into the single outer JETOS repository.
+"""Absorb source submodules into the single outer JETOS repository.
 
 This is an explicit one-time migration tool. It snapshots the currently pinned
 Linux and CPython/JetLang source working trees, strips nested Git metadata,
@@ -20,12 +20,12 @@ import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE_BRAIN = ROOT / "source-brain"
+SOURCE = ROOT / "source"
 TARGETS = {
-    "linux": SOURCE_BRAIN / "linux",
-    "cpython": SOURCE_BRAIN / "cpython",
+    "linux": SOURCE / "linux",
+    "cpython": SOURCE / "cpython",
 }
-PROVENANCE = SOURCE_BRAIN / "UPSTREAM_PROVENANCE.json"
+PROVENANCE = SOURCE / "UPSTREAM_PROVENANCE.json"
 
 
 def run(*args: str, cwd: Path = ROOT, capture: bool = False) -> subprocess.CompletedProcess[str]:
@@ -57,7 +57,7 @@ def submodule_head(path: Path) -> str:
 
 
 def submodule_url(name: str) -> str:
-    return output("git", "config", "-f", str(ROOT / ".gitmodules"), "--get", f"submodule.source-brain/{name}.url")
+    return output("git", "config", "-f", str(ROOT / ".gitmodules"), "--get", f"submodule.source/{name}.url")
 
 
 def require_initialized_exact_sources() -> dict[str, dict[str, str]]:
@@ -67,7 +67,7 @@ def require_initialized_exact_sources() -> dict[str, dict[str, str]]:
     required = {"linux": "Makefile", "cpython": "Python/sysmodule.c"}
     for name, path in TARGETS.items():
         if not (path / required[name]).is_file():
-            raise SystemExit(f"{path.relative_to(ROOT)} is not initialized; run `git submodule update --init source-brain/linux source-brain/cpython` first")
+            raise SystemExit(f"{path.relative_to(ROOT)} is not initialized; run `git submodule update --init source/linux source/cpython` first")
         expected = gitlink_sha(path)
         actual = submodule_head(path)
         if actual != expected:
@@ -85,7 +85,7 @@ def nested_git_metadata(root: Path) -> list[str]:
 
 
 def remove_submodule_admin_metadata() -> None:
-    modules_root = ROOT / ".git" / "modules" / "source-brain"
+    modules_root = ROOT / ".git" / "modules" / "source"
     for name in TARGETS:
         stale = modules_root / name
         if stale.exists():
@@ -105,7 +105,7 @@ def migrate(commit: bool) -> None:
             print(f"snapshot {source.relative_to(ROOT)} -> {snapshot}")
             copy_without_git(source, snapshot)
             snapshots[name] = snapshot
-        run("git", "rm", "-f", ".gitmodules", "source-brain/linux", "source-brain/cpython")
+        run("git", "rm", "-f", ".gitmodules", "source/linux", "source/cpython")
         for name, destination in TARGETS.items():
             print(f"absorb {name} into outer repository")
             copy_without_git(snapshots[name], destination)
@@ -117,16 +117,16 @@ def migrate(commit: bool) -> None:
         "sources": records,
     }
     PROVENANCE.write_text(json.dumps(provenance, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    nested = nested_git_metadata(SOURCE_BRAIN)
+    nested = nested_git_metadata(SOURCE)
     if nested:
         raise SystemExit("Nested Git metadata remains: " + ", ".join(nested))
-    run("git", "add", "source-brain/linux", "source-brain/cpython", str(PROVENANCE.relative_to(ROOT)))
+    run("git", "add", "source/linux", "source/cpython", str(PROVENANCE.relative_to(ROOT)))
     remove_submodule_admin_metadata()
     print(output("git", "diff", "--cached", "--stat"))
     print("\nUnified-source invariants staged:")
     print("  .gitmodules removed")
-    print("  source-brain/linux is ordinary tracked content")
-    print("  source-brain/cpython is ordinary tracked content")
+    print("  source/linux is ordinary tracked content")
+    print("  source/cpython is ordinary tracked content")
     print("  nested .git metadata absent")
     print(f"  provenance recorded in {PROVENANCE.relative_to(ROOT)}")
     if commit:

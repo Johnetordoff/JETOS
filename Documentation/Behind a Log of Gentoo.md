@@ -28,7 +28,7 @@ The present upstream gap has two different meanings and must not be collapsed in
 
 For each newly detected stable or longterm release, the periodic JetOS check should preserve the official changelog reference and append a concise categorized digest before or alongside adoption. The digest should call out at least: kernel/user ABI and syscall changes; ARM64/ARMv7/x86-64 changes; storage/filesystem changes; networking; drivers/device discovery; build/toolchain requirements; security/correctness fixes; and anything that changes the JetLang↔kernel boundary.
 
-The Behind a Log is informational during a stabilization emergency: being behind must be visible, but version drift alone must not prevent a known-good JetOS boot from being restored. Once the baseline is green, upstream currency becomes active engineering debt under `MANDATE_004H_UPSTREAM_CURRENCY.md`.
+The Behind a Log is informational during a stabilization emergency: being behind must be visible, but version drift alone must not prevent a known-good JetOS boot from being restored. Once the baseline is green, upstream currency becomes active engineering debt under `MANDATE.md`.
 
 ## History
 

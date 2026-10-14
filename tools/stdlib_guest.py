@@ -48,7 +48,7 @@ def build(mode: str) -> tuple[Path, Path]:
         "--stdlib",
         str(stdlib),
         "--linux-source",
-        str(dev.SOURCE_BRAIN_LINUX),
+        str(dev.SOURCE_LINUX),
         "--stdlib-qualify",
         mode,
     ])

@@ -16,8 +16,8 @@ DOCKER_DEV_IMAGE = "jetos:dev"
 TEST_TARGET = "test"
 DEV_TARGET = "dev"
 SOURCE_MARKERS = {
-    "source-brain/linux": "Makefile",
-    "source-brain/cpython": "Python/sysmodule.c",
+    "source/linux": "Makefile",
+    "source/cpython": "Python/sysmodule.c",
 }
 
 
@@ -53,11 +53,11 @@ def ensure_dev_sources() -> None:
     """Make the top-level dev command own its source prerequisites.
 
     Transitional checkouts still record Linux and JetLang/CPython as gitlinks.
-    A fresh clone may therefore have empty source-brain directories.  The Mac
-    Docker entry point must initialize those exact pinned sources before it
-    bind-mounts the checkout into the development container.  After the
-    one-repository migration, no submodule command is used; ordinary tracked
-    source trees must already be present.
+    A fresh clone may therefore have empty source directories. The Mac Docker
+    entry point must initialize those exact pinned sources before it bind-mounts
+    the checkout into the development container. After the one-repository
+    migration, no submodule command is used; ordinary tracked source trees must
+    already be present.
     """
     missing = missing_source_trees()
     if not missing:
@@ -68,7 +68,7 @@ def ensure_dev_sources() -> None:
         if not git:
             raise SystemExit(
                 "JETOS development source preparation requires Git while the "
-                "repository is in its transitional Source Brain layout."
+                "repository is in its transitional source layout."
             )
         run([
             git,
@@ -76,8 +76,8 @@ def ensure_dev_sources() -> None:
             "update",
             "--init",
             "--recursive",
-            "source-brain/linux",
-            "source-brain/cpython",
+            "source/linux",
+            "source/cpython",
         ])
         missing = missing_source_trees()
         if not missing:
