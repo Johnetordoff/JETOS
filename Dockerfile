@@ -17,6 +17,7 @@ RUN apt-get update \
         bc \
         bison \
         flex \
+        ccache \
         libssl-dev \
         libelf-dev \
         dwarves \
@@ -42,7 +43,13 @@ ENV PYTHONPATH=/jetos/src
 ENV LANG=C.UTF-8
 ENV LC_ALL=C.UTF-8
 ENV JETOS_CONTAINER=1
-ENV CC=cc
+# ccache fingerprints compiler/preprocessor inputs and compiler identity. The
+# cache lives outside .build so a source-revision cleanup cannot silently make
+# it stale or destroy it. Compiler identity is checked by content rather than
+# only timestamp; no unsafe sloppiness options are enabled.
+ENV CCACHE_DIR=/jetos/.jetos-cache/ccache
+ENV CCACHE_COMPILERCHECK=content
+ENV CC="ccache cc"
 
 # Reproducible JETOS userspace qualification. The two large frozen source
 # submodules are excluded from this build context because this stage tests the
@@ -67,6 +74,8 @@ CMD ["python", "tools/container_os_qualify.py", "--phase", "runtime", "--require
 FROM base AS dev
 VOLUME ["/jetos/.build"]
 RUN command -v qemu-system-aarch64 \
+    && command -v ccache \
+    && ccache --version \
     && command -v cc \
     && command -v make \
     && command -v ld
