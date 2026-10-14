@@ -171,7 +171,13 @@ def kernel_image(target_arch: str) -> Path:
 def build_kernel(target_arch: str) -> Path:
     image = kernel_image(target_arch)
     if not image.exists():
-        run([sys.executable, "tools/build.py", "kernel", str(LINUX_SOURCE), "--arch", target_arch])
+        run([
+            sys.executable,
+            "tools/kernel_cache.py",
+            str(LINUX_SOURCE),
+            "--source", str(SOURCE_LINUX),
+            "--arch", target_arch,
+        ])
     if not image.exists():
         raise SystemExit(f"kernel build did not produce {image}")
     return image
