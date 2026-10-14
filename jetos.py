@@ -31,7 +31,13 @@ def python_tool(name: str, args: list[str]) -> None:
 
 
 def tests() -> None:
-    for script in ("test.py", "test_unicode.py", "test_language.py", "test_bootstrap.py"):
+    for script in (
+        "test.py",
+        "test_unicode.py",
+        "test_language.py",
+        "test_bootstrap.py",
+        "test_behind_a_log.py",
+    ):
         python_tool(script, [])
 
 
