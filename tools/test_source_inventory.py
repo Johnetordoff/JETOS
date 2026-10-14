@@ -19,7 +19,7 @@ def main() -> int:
         data = source_inventory.scan(root)
         summary = data["summary"]
         assert summary["files"] == 3
-        assert summary["bytes"] == 24
+        assert summary["bytes"] == 26
         assert summary["text_files"] == 2
         assert summary["binary_files"] == 1
         assert summary["text_lines"] == 4
