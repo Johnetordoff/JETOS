@@ -16,6 +16,8 @@ JetLang is the JetOS language/runtime. It is an improved, deliberately diverging
 
 CPython is JetLang's source lineage and compatibility foundation. Python language semantics and the supported standard-library surface are the compatibility contract. JetLang may replace or consolidate CPython implementation details when behavior remains correctly qualified. CPython regression tests are a primary compatibility corpus, supplemented by JetLang-native and JetOS same-runtime tests.
 
+JetLang currently stabilizes on the Python 3.14 lineage. The next feature-series target is 3.15, but that transition is an integration into the existing JetLang-owned tree, not a wholesale source-tree replacement. Once the initial CPython-derived source has been absorbed, future CPython releases are treated as upstream change/reference streams: examine their release notes, diffs, tests, standard-library/runtime changes, and fixes; reconcile those changes into JetLang; preserve intentional JetLang changes; then qualify the resulting integrated runtime. The compatibility/version label advances only after that integration is complete and qualified.
+
 Linux and CPython-derived JetLang native responsibilities are components of one integrated JetOS/JetLang runtime, not separate products.
 
 ## Source organization
@@ -30,7 +32,7 @@ source/
   ports/
 ```
 
-The target source-control architecture is one outer JETOS Git repository containing ordinary tracked source trees, with no nested Git repositories or nested `.git` metadata. Transitional submodules may remain only until the exact pinned Linux and CPython working trees are safely absorbed. Upstream repositories are provenance/update sources; their URLs, versions, licenses, and commit IDs are recorded as JetOS-owned metadata.
+The target source-control architecture is one outer JETOS Git repository containing ordinary tracked source trees, with no nested Git repositories or nested `.git` metadata. Transitional submodules may remain only until the exact pinned Linux and CPython working trees are safely absorbed. After absorption, the JetLang tree is JetOS-owned source; upstream CPython repositories remain provenance, comparison, change-discovery, and test/reference sources rather than replacement working trees. Upstream URLs, versions, licenses, and commit IDs are recorded as JetOS-owned metadata.
 
 ## Integrated-runtime qualification
 
