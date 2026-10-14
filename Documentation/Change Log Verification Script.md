@@ -11,52 +11,26 @@ The persistent ledgers are:
 
 ```bash
 python3 tools/verify_behind_a_log.py
-```
-
-This prints the current detected drift without modifying the repository.
-
-```bash
 python3 tools/verify_behind_a_log.py --write
-```
-
-This refreshes the machine-managed current-status blocks and appends a new historical fingerprint only when either the JetOS pin or detected upstream release changes.
-
-```bash
 python3 tools/verify_behind_a_log.py --json
 ```
 
-This emits machine-readable status suitable for other repository-owned tooling.
+The first prints detected drift without modifying the repository. `--write` refreshes machine-managed current-status blocks and appends a historical fingerprint only when the JetOS pin or detected upstream release changes. `--json` emits machine-readable status for repository-owned tooling.
 
 ## Sources
 
-The verifier uses authoritative upstream release surfaces:
-
-- Linux release metadata: `https://www.kernel.org/releases.json`
-- kernel.org release changelogs under `https://cdn.kernel.org/pub/linux/kernel/`
-- Python release index: `https://www.python.org/downloads/`
-- Python release notes and What's New pages on python.org/docs.python.org
-
-It has no third-party Python dependencies.
+The verifier uses authoritative upstream release surfaces: kernel.org release metadata/changelogs and Python release/download/What's-New pages. It has no third-party Python dependencies.
 
 ## Update policy
 
-A detected upstream release is not merely a number bump. When the version fingerprint changes, the corresponding Behind a Log must retain the upstream release/changelog references and receive a concise human-readable digest of the important changes. That digest is evidence for the subsequent JetOS/JetLang rebase or kernel update work.
+A detected upstream release is not merely a number bump. When a version fingerprint changes, the corresponding Behind a Log retains upstream release/changelog references and receives a concise digest of changes relevant to JetOS or JetLang.
 
-The logs should distinguish:
+The logs distinguish current pinned version/commit, current stable upstream, same-maintenance-line drift where applicable, feature/major-series drift, authoritative change references, relevant changes, observation date, and closure date/version.
 
-- current pinned version and exact commit;
-- current stable upstream version;
-- same-maintenance-line drift when applicable;
-- feature/major-series drift;
-- official changelog/release-note references;
-- the important changes likely to affect JetOS or JetLang;
-- the date the drift was observed;
-- the date/version at which the gap was closed.
-
-During boot stabilization, upstream drift is visible technical debt but is not permission to interrupt repair of a known broken build merely to chase a new release. Once a known-good baseline exists, `MANDATE_004H_UPSTREAM_CURRENCY.md` requires prompt stable-upstream intake and qualification.
+During boot stabilization, upstream drift is visible technical debt but does not override repair of a known broken build. Once a known-good baseline exists, `MANDATE.md` requires stable-upstream intake and qualification.
 
 ## Periodic verification
 
-The normal JetOS engineering/reporting cycle should run the verifier periodically. If no fingerprint changed, no history entry is added. If upstream moved, the current status is refreshed and the engineering report must call out the new gap. Before an upstream update is considered fully handled, the corresponding release-change digest and qualification evidence must be recorded.
+The normal engineering/reporting cycle should run the verifier periodically. If no fingerprint changed, no history entry is added. If upstream moved, the current status is refreshed and the engineering report calls out the new gap. Before an update is fully handled, the release-change digest and qualification evidence must be recorded.
 
-The verifier itself does not silently rewrite JetOS pins and does not claim a new release qualified. Updating the pin remains an explicit source change followed by the full JetOS/JetLang build, boot, compatibility, integration, architecture, and target qualification chain.
+The verifier does not silently rewrite JetOS pins and does not claim a new release qualified. Updating a pin remains an explicit source change followed by the full JetOS/JetLang build, boot, compatibility, integration, architecture, and target qualification chain.
