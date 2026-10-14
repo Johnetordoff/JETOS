@@ -2,107 +2,46 @@
 
 Status: **active architecture rule**
 
-## Core rule
+JETOS is developed and qualified in a **Fat Mode** environment, while the ODROID-HC1 is flashed with a deliberately minimized **Skinny Mode** runtime image. **Fat Mode is the workshop. Skinny Mode is the product.**
 
-JETOS is developed and qualified in a **Fat Mode** environment, but the ODROID-HC1 is flashed with a deliberately minimized **Skinny Mode** runtime image.
-
-**Fat Mode is the workshop. Skinny Mode is the product.**
-
-The purpose of Fat Mode is to make JETOS easy to build, inspect, test, instrument, debug, compare, co-design, and reduce. The purpose of Skinny Mode is to preserve the maximum useful Python capability surface with the minimum kernel/userspace/runtime material required to support it on the target.
-
-The canonical native source workspace is `source-brain/`. Fat Mode owns the complete Linux and CPython source lineages used to produce the qualified runtime. Skinny Mode does not carry those complete source trees.
+The canonical native/dependency source workspace is `source/`. Fat Mode owns the complete Linux and CPython-derived JetLang source lineages used to produce the qualified runtime. Skinny Mode does not carry those complete source trees.
 
 ## Fat Mode
 
-Fat Mode may include development-only material such as:
+Fat Mode may contain complete `source/linux` and `source/cpython` trees, shared/ported dependency source, compilers/linkers/headers, diagnostics, broad kernel configuration, exhaustive regression/integration/architecture/hardware tests, build and image tools, benchmarks, exact provenance, and temporary development/accounting material.
 
-- the complete Source Brain Linux source tree;
-- the complete Source Brain CPython source tree;
-- JETOS modifications that co-design the kernel and CPython together;
-- compilers, linkers, headers, build tools, diagnostics, tracing, debuggers, profilers, sanitizers, fuzzers and static-analysis tools;
-- broad kernel configuration used to establish a capability baseline;
-- exhaustive repository, CPython, kernel, integration, architecture, emulation and physical-hardware tests;
-- extensive test fixtures and qualification tooling;
-- image-generation and flashing tools;
-- benchmark and comparison manifests for optimization/reduction experiments;
-- exact source/configuration provenance for every promoted kernel and runtime artifact;
-- the top-level `Temporary Bullshit/` workspace and its source-accounting scripts/output while that temporary development aid is still needed.
-
-Fat Mode is not the target footprint for the HC1 or another production device.
+Fat Mode is not the production footprint.
 
 ## Skinny Mode
 
-The flashed HC1 image should contain only what the qualified runtime needs, including:
+A Skinny HC1 image contains only the qualified runtime responsibilities: the JETOS-maintained ARMv7 Linux kernel and device tree/boot files, target-native JetLang runtime, supported Python standard library and native runtime dependencies, early userspace/control logic, required storage/network/SATA/firmware/security/recovery capabilities, and compact provenance identifying the exact Fat source/build revision.
 
-- the completed qualified JETOS-maintained HC1/ARMv7 Linux kernel;
-- the HC1 device tree and required boot files;
-- the completed target-native JETOS Python runtime derived from the qualified Source Brain CPython revision;
-- the supported Python standard library and required native extension/shared-library runtime dependencies;
-- JETOS early userspace/control logic;
-- storage/filesystem support needed by the target;
-- Ethernet, IP, routing, DHCP/DNS, and authorized remote administration support;
-- safe SATA discovery support;
-- required firmware, certificate roots, logging/recovery pieces, and other capabilities that survive qualification;
-- compact provenance sufficient to identify the exact Fat source/build revision that produced the image.
+Skinny Mode must **not** contain complete Linux or CPython source trees, `source/` development worktrees, `Temporary Bullshit/` or its generated reports, development compilers/build machinery, or Fat-only regression/fuzz/benchmark/diagnostic material merely because it was used for qualification.
 
-Skinny Mode must **not** contain:
-
-- the complete Linux source tree;
-- the CPython source tree;
-- Source Brain development worktrees;
-- the top-level `Temporary Bullshit/` directory, any copy of it under `/jetos`, or its generated inventory/report output;
-- development-only compilers, linkers, headers or package/build machinery;
-- Fat-mode test fixtures, regression suites, fuzz corpora, benchmark harnesses or build diagnostics merely because they were used to qualify the image.
-
-`tools/package.py` must explicitly remove `Temporary Bullshit` from a candidate Skinny rootfs if any prior build step stages it. The repository packaging test must keep this invariant covered.
-
-A runtime self-check may remain only when it is itself part of safe normal operation. The development test suite belongs to Fat Mode.
+`tools/package.py` explicitly removes temporary development material from a candidate Skinny rootfs. Runtime self-checks remain only when they have a real operational responsibility.
 
 ## Python-first reduction gate
 
-Skinny Mode is not allowed to become smaller by silently reducing Python.
+Skinny Mode must not become smaller by silently reducing Python/JetLang behavior. Start from the exact recorded source, establish a passing Fat baseline, remove substrate capabilities incrementally, rebuild/boot, rerun applicable qualification, retain only reductions that preserve the required Python-visible surface and device responsibilities, and restore substrate when required behavior regresses.
 
-The reduction process is:
-
-1. build a broad/fat target-capable kernel and target-native JETOS Python runtime from the exact Source Brain revisions recorded by the JETOS revision;
-2. run the full JETOS standard-library, CPython, kernel and Python↔OS qualification suite;
-3. record the passing behavior and source/build provenance as the baseline;
-4. remove one Linux kernel/userspace/runtime capability family at a time from the candidate Skinny image;
-5. rebuild and boot the candidate image;
-6. rerun the applicable qualification suite against that candidate on emulated and/or physical target hardware;
-7. keep the reduction only when the required Python-visible capability surface and target responsibilities remain intact;
-8. restore the removed substrate when the reduction causes a required capability to regress.
-
-Therefore the optimization target is:
-
-> **the smallest target runtime that preserves the complete qualified JETOS Python capability surface and required hardware responsibilities.**
+The optimization target is **the smallest target runtime that preserves the complete qualified JETOS Python capability surface and required hardware responsibilities.**
 
 ## Kernel and language ownership
 
-The Skinny kernel is a **JETOS-maintained Linux-derived kernel build**, not a clean-room replacement kernel. JETOS owns the selected source revision, target configuration, JETOS patches, build rules, capability rationale, and qualification evidence.
+The Skinny kernel is a JETOS-maintained Linux-derived build. JetOS owns the selected revision, target configuration, patches, build rules, capability rationale, and qualification evidence. JetLang is likewise built from the controlled CPython-derived source lineage. Coordinated Linux/JetLang changes are permitted when they produce a simpler, faster, or safer integrated runtime, but runtime-affecting changes must satisfy the integrated qualification in `MANDATE.md` and `ARCHITECTURE.md`.
 
-The Skinny Python runtime is likewise the completed result of the qualified JETOS CPython source lineage. Linux and CPython may be modified together in Source Brain where a coordinated change produces a simpler, faster or safer Python-facing operating system.
-
-For both components, the source revision represented by the Fat JETOS commit must be the source used to produce the promoted artifact. No promoted kernel or interpreter may come from an unrecorded working tree.
+No promoted kernel or interpreter may come from an unrecorded working tree.
 
 ## Source retention versus runtime footprint
 
-Complete Linux and CPython source are **Fat-only development material**. They may exist on build servers, protected source repositories, development disks and archival/recovery systems, but they are intentionally removed from the Skinny runtime image.
+Complete development source is Fat-only material. It may exist on build servers, protected source repositories, development disks, and recovery systems, while the Skinny image keeps the completed runtime plus compact provenance sufficient to reproduce it.
 
-The Skinny image retains the completed kernel/runtime plus compact provenance identifying their exact source/build lineage. Reconstructing or modifying the kernel or language is a Fat-mode operation.
+## Testing and flashing boundary
 
-## Testing boundary
+Fat Mode should be aggressively tested. Skinny images run the already-qualified result and do not carry the development suite without a specific runtime responsibility.
 
-Fat Mode should be aggressively over-tested. The qualification suite may be large, slow and redundant when that increases confidence across subsystem, instruction-set, emulation and physical-hardware boundaries.
+The physical workflow is:
 
-Skinny production images do not carry that development suite. Their job is to run the already-qualified result. Any tests retained in Skinny must have a specific operational health/safety responsibility rather than being retained as development bulk.
+**Fat source/development environment → build + exhaustive qualification → construct Skinny target image → verify provenance → flash dedicated media → boot target → target qualification → promote or iterate.**
 
-## Flashing model
-
-The normal physical workflow is:
-
-**Fat development/Source Brain environment → build + exhaustive qualify → construct Skinny target image → verify source/artifact provenance → flash dedicated media → boot target → target qualification → promote or iterate.**
-
-The attached HC1 SATA disk is not a build scratch disk and must not be formatted or modified during bring-up without explicit authorization.
-
-See `source-brain/README.md` for the Linux↔CPython co-design and Source Brain Weaver contract.
+The attached HC1 SATA disk is not build scratch space and must not be formatted or modified during bring-up without explicit authorization.
