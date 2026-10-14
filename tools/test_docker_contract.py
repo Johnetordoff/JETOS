@@ -28,6 +28,9 @@ def main() -> int:
     assert "command -v qemu-system-aarch64" in dockerfile
     assert "command -v cc" in dockerfile
     assert "command -v make" in dockerfile
+    assert "libgdbm-dev" in dockerfile
+    assert "libgdbm-compat-dev" in dockerfile
+    assert "tk-dev" in dockerfile
     assert "tools/container_os_qualify.py --phase build --require-toolchain" in dockerfile
     assert 'CMD ["python", "tools/container_os_qualify.py", "--phase", "runtime", "--require-toolchain"]' in dockerfile
     assert 'CMD ["python", "jetos.py", "doctor"]' in dockerfile
