@@ -22,8 +22,10 @@ def main() -> int:
     assert (ROOT / "source-brain/README.md").is_file()
     assert (ROOT / "source-brain/shared").is_dir()
     assert (ROOT / "source-brain/shared/README.md").is_file()
+    assert (ROOT / "Temporary Bullshit").is_dir()
+    assert (ROOT / "Temporary Bullshit/README.md").is_file()
     assert not (ROOT / "vendor").exists()
-    checks += 4
+    checks += 6
 
     dev = (ROOT / "tools/dev.py").read_text(encoding="utf-8")
     assert 'SOURCE_BRAIN = ROOT / "source-brain"' in dev
@@ -35,15 +37,17 @@ def main() -> int:
     package = (ROOT / "tools/package.py").read_text(encoding="utf-8")
     assert 'PROFILE_FAT = "fat"' in package
     assert 'PROFILE_SKINNY = "skinny"' in package
-    assert "Skinny profile: Source Brain trees and Fat qualification tools omitted" in package
-    checks += 3
+    assert 'TEMPORARY_BULLSHIT_DIRNAME = "Temporary Bullshit"' in package
+    assert "Skinny profile: Source Brain trees, Temporary Bullshit, and" in package
+    checks += 4
 
     skinny = (ROOT / "SKINNY_MODE.md").read_text(encoding="utf-8")
     assert "Skinny Mode must **not** contain" in skinny
     assert "the complete Linux source tree" in skinny
     assert "the CPython source tree" in skinny
+    assert "Temporary Bullshit/" in skinny
     assert "Fat-mode test fixtures" in skinny
-    checks += 4
+    checks += 5
 
     work_server = (ROOT / "tools/work_server.py").read_text(encoding="utf-8")
     assert '"source-brain/linux/"' in work_server
