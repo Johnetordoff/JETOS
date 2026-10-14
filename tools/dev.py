@@ -41,6 +41,21 @@ def current_revision() -> str:
     return run(["git", "rev-parse", "HEAD"], capture=True).stdout.strip()
 
 
+def clear_build_directory() -> None:
+    """Clear build contents without deleting BUILD itself.
+
+    Docker Desktop mounts /jetos/.build as a native Docker volume on macOS.
+    Removing the mount point itself fails with EBUSY, so stale-revision cleanup
+    must remove only its children and preserve the mounted directory.
+    """
+    BUILD.mkdir(parents=True, exist_ok=True)
+    for child in BUILD.iterdir():
+        if child.is_symlink() or child.is_file():
+            child.unlink()
+        else:
+            shutil.rmtree(child)
+
+
 def prepare_revision_build() -> str:
     """Ensure cached artifacts belong to the exact current JetOS revision."""
     revision = current_revision()
@@ -53,8 +68,7 @@ def prepare_revision_build() -> str:
             "JETOS source revision changed; discarding stale JetLang/kernel/Fat artifacts",
             flush=True,
         )
-        shutil.rmtree(BUILD)
-    BUILD.mkdir(parents=True, exist_ok=True)
+    clear_build_directory()
     BUILD_REVISION.write_text(revision + "\n", encoding="utf-8")
     return revision
 
@@ -99,21 +113,24 @@ def require_source_brain(name: str, source: Path, expected_commit: str, required
         )
 
 
-def copy_source_brain(source: Path, destination: Path, commit: str, required_file: str) -> None:
+def copy_source_brain(name: str, source: Path, destination: Path, commit: str, required_file: str) -> None:
     marker = destination / ".jetos-source-brain-base"
     if marker.is_file() and marker.read_text(encoding="utf-8").strip() == commit and (destination / required_file).is_file():
+        print(f"JETOS source copy: reusing prepared {name} tree", flush=True)
         return
     if destination.exists():
         shutil.rmtree(destination)
+    print(f"JETOS source copy: {name} -> {destination}", flush=True)
     shutil.copytree(source, destination, symlinks=True, ignore=shutil.ignore_patterns(".git"))
     marker.write_text(commit + "\n", encoding="utf-8")
+    print(f"JETOS source copy complete: {name}", flush=True)
 
 
 def prepare_sources() -> None:
     require_source_brain("Linux", SOURCE_BRAIN_LINUX, LINUX_COMMIT, "Makefile")
     require_source_brain("JetLang/CPython", SOURCE_BRAIN_CPYTHON, CPYTHON_COMMIT, "Python/sysmodule.c")
-    copy_source_brain(SOURCE_BRAIN_LINUX, LINUX_SOURCE, LINUX_COMMIT, "Makefile")
-    copy_source_brain(SOURCE_BRAIN_CPYTHON, LANGUAGE_SOURCE, CPYTHON_COMMIT, "Python/sysmodule.c")
+    copy_source_brain("Linux", SOURCE_BRAIN_LINUX, LINUX_SOURCE, LINUX_COMMIT, "Makefile")
+    copy_source_brain("JetLang/CPython", SOURCE_BRAIN_CPYTHON, LANGUAGE_SOURCE, CPYTHON_COMMIT, "Python/sysmodule.c")
     run([sys.executable, "tools/language.py", "patch", str(LANGUAGE_SOURCE)])
 
 
