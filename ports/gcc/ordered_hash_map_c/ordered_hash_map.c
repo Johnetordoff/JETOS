@@ -8,23 +8,15 @@
 #include <stdlib.h>
 #include <string.h>
 
-static bool
-reserve_str_int(jetos_omap_str_int *map, size_t needed)
+static void *
+grow_entries(void *entries, size_t *capacity, size_t entry_size)
 {
-    if (needed <= map->capacity)
-        return true;
-
-    size_t next = map->capacity ? map->capacity * 2 : 8;
-    while (next < needed)
-        next *= 2;
-
-    void *memory = realloc(map->entries, next * sizeof(*map->entries));
+    size_t next = *capacity ? *capacity * 2 : 8;
+    void *memory = realloc(entries, next * entry_size);
     if (!memory)
-        return false;
-
-    map->entries = memory;
-    map->capacity = next;
-    return true;
+        abort();
+    *capacity = next;
+    return memory;
 }
 
 static size_t
@@ -82,8 +74,10 @@ jetos_omap_str_int_put(jetos_omap_str_int *map, const char *key, int value)
         return existed;
     }
 
-    if (!reserve_str_int(map, map->length + 1))
-        abort();
+    if (map->length == map->capacity)
+        map->entries = grow_entries(
+            map->entries, &map->capacity, sizeof(*map->entries)
+        );
 
     map->entries[map->length++] = (jetos_omap_str_int_entry){
         .key = key,
@@ -124,8 +118,10 @@ jetos_omap_str_int_get_or_insert(jetos_omap_str_int *map, const char *key,
         return &map->entries[index].value;
     }
 
-    if (!reserve_str_int(map, map->length + 1))
-        abort();
+    if (map->length == map->capacity)
+        map->entries = grow_entries(
+            map->entries, &map->capacity, sizeof(*map->entries)
+        );
 
     index = map->length++;
     map->entries[index] = (jetos_omap_str_int_entry){
@@ -172,25 +168,6 @@ jetos_omap_str_int_nth_active(const jetos_omap_str_int *map, size_t n,
     return false;
 }
 
-static bool
-reserve_int_str(jetos_omap_int_str *map, size_t needed)
-{
-    if (needed <= map->capacity)
-        return true;
-
-    size_t next = map->capacity ? map->capacity * 2 : 8;
-    while (next < needed)
-        next *= 2;
-
-    void *memory = realloc(map->entries, next * sizeof(*map->entries));
-    if (!memory)
-        return false;
-
-    map->entries = memory;
-    map->capacity = next;
-    return true;
-}
-
 static size_t
 find_int_str_any(const jetos_omap_int_str *map, int key)
 {
@@ -227,8 +204,10 @@ jetos_omap_int_str_put(jetos_omap_int_str *map, int key, const char *value)
         return existed;
     }
 
-    if (!reserve_int_str(map, map->length + 1))
-        abort();
+    if (map->length == map->capacity)
+        map->entries = grow_entries(
+            map->entries, &map->capacity, sizeof(*map->entries)
+        );
 
     map->entries[map->length++] = (jetos_omap_int_str_entry){
         .key = key,
@@ -268,8 +247,10 @@ jetos_omap_int_str_get_or_insert(jetos_omap_int_str *map, int key, bool *existed
         return &map->entries[index].value;
     }
 
-    if (!reserve_int_str(map, map->length + 1))
-        abort();
+    if (map->length == map->capacity)
+        map->entries = grow_entries(
+            map->entries, &map->capacity, sizeof(*map->entries)
+        );
 
     index = map->length++;
     map->entries[index] = (jetos_omap_int_str_entry){

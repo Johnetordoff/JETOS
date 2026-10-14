@@ -121,6 +121,33 @@ test_map_of_int_to_strings(void)
 }
 
 static void
+test_growth(void)
+{
+    enum { count = 20 };
+    char strings[count][16];
+    jetos_omap_str_int by_string;
+    jetos_omap_int_str by_int;
+    jetos_omap_str_int_init(&by_string);
+    jetos_omap_int_str_init(&by_int);
+
+    for (int i = 0; i < count; ++i) {
+        snprintf(strings[i], sizeof(strings[i]), "key-%d", i);
+        CHECK(jetos_omap_str_int_put(&by_string, strings[i], i * 3) == false);
+        CHECK(jetos_omap_int_str_put(&by_int, i, strings[i]) == false);
+    }
+
+    CHECK(jetos_omap_str_int_elements(&by_string) == count);
+    CHECK(jetos_omap_int_str_elements(&by_int) == count);
+    for (int i = 0; i < count; ++i) {
+        CHECK(*jetos_omap_str_int_get(&by_string, strings[i]) == i * 3);
+        CHECK(*jetos_omap_int_str_get(&by_int, i) == strings[i]);
+    }
+
+    jetos_omap_int_str_destroy(&by_int);
+    jetos_omap_str_int_destroy(&by_string);
+}
+
+static void
 test_removal(void)
 {
     jetos_omap_str_int m;
@@ -182,6 +209,7 @@ main(void)
 {
     test_map_of_strings_to_int();
     test_map_of_int_to_strings();
+    test_growth();
     test_removal();
     test_copy_ctor_behavior();
     printf("ordered_hash_map C port: %u checks passed\n", passes);
