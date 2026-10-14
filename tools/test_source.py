@@ -13,8 +13,24 @@ def nested_git_metadata() -> list[Path]:
     return sorted(SOURCE.rglob(".git"))
 
 
+def canonical_doc_contract() -> None:
+    assert (ROOT / "MANDATE.md").is_file()
+    assert (ROOT / "AGENTS.md").is_file()
+    assert (ROOT / "ARCHITECTURE.md").is_file()
+    assert not list(ROOT.glob("MANDATE_*.md"))
+    assert not [path for path in ROOT.glob("AGENT*.md") if path.name != "AGENTS.md"]
+    assert not [
+        path
+        for path in ROOT.glob("*ARCHITECTURE*.md")
+        if path.name != "ARCHITECTURE.md"
+    ]
+
+
 def main() -> int:
     checks = 0
+
+    canonical_doc_contract()
+    checks += 6
 
     gitmodules = ROOT / ".gitmodules"
     provenance = SOURCE / "UPSTREAM_PROVENANCE.json"
