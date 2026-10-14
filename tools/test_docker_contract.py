@@ -39,6 +39,12 @@ def main() -> int:
     assert '"--target", TEST_TARGET' in entrypoint
     assert '"--target", DEV_TARGET' in entrypoint
     assert 'docker, "info", "--format", "{{.ServerVersion}}"' in entrypoint
+    assert '"source-brain/linux": "Makefile"' in entrypoint
+    assert '"source-brain/cpython": "Python/sysmodule.c"' in entrypoint
+    assert '"submodule"' in entrypoint
+    assert '"--init"' in entrypoint
+    assert 'ensure_dev_sources()' in entrypoint
+    assert 'sys.stdin.isatty() and sys.stdout.isatty()' in entrypoint
 
     qualifier = (ROOT / "tools/container_os_qualify.py").read_text(encoding="utf-8")
     assert '"c_compiler": os.environ.get("CC", "cc")' in qualifier
