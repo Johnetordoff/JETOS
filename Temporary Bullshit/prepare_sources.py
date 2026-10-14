@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Initialize the pinned JETOS Linux and JetLang source trees."""
+"""Ensure the JETOS Linux and JetLang source trees are present."""
 from __future__ import annotations
 
 from common import prepare_sources
@@ -7,7 +7,7 @@ from common import prepare_sources
 
 def main() -> int:
     prepare_sources()
-    print("JETOS source submodules initialized.")
+    print("JETOS source trees are present.")
     return 0
 
 

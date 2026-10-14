@@ -18,15 +18,19 @@ python3 "Temporary Bullshit/write_inventory.py"
 python3 "Temporary Bullshit/full_report.py"
 ```
 
-`prepare_sources.py` initializes the pinned `source-brain/linux` and `source-brain/cpython` submodules in one Git operation. The other commands reuse the canonical repository scanner in `tools/source_inventory.py`; they do not maintain a second implementation of source counting.
+`prepare_sources.py` ensures `source-brain/linux` and the CPython-derived `source-brain/cpython` JetLang lineage are present. During the temporary pre-migration bootstrap only, when `.gitmodules` still exists, it may initialize the pinned legacy gitlinks so `tools/absorb_source_brain.py` can safely absorb them. In the canonical unified repository it does **not** run submodule commands; it only verifies the ordinary tracked source trees.
 
-`full_report.py` writes the complete inventory under `Temporary Bullshit/output/` by default and prints the key totals plus every discovered file type. Pass `--prepare` if the source submodules need to be initialized first.
+The other commands reuse the canonical repository scanner in `tools/source_inventory.py`; they do not maintain a second implementation of source counting.
+
+`full_report.py` writes the complete inventory under `Temporary Bullshit/output/` by default and prints the key totals plus every discovered file type. Pass `--prepare` to ensure the source trees are present first.
 
 ## Rules
 
 - This folder is not JetOS runtime code.
 - This folder is not part of JetLang.
 - This folder is not part of the Langkernel.
+- JetLang itself is the improved CPython-derived language/runtime; this workspace merely measures source.
+- The canonical source-control end state is one outer JETOS repository, with no Source Brain submodules or nested `.git` metadata.
 - It may be ugly, temporary, and operationally convenient, but its scripts should still be deterministic and testable.
 - Do not use absence of a complete LOC baseline as a reason to stop engineering work.
 - Do not make one GitHub API request per file to count source. Prefer a local checkout and recursive filesystem/Git traversal.
