@@ -31,6 +31,7 @@ def main() -> int:
     assert "tools/container_os_qualify.py --phase build --require-toolchain" in dockerfile
     assert 'CMD ["python", "tools/container_os_qualify.py", "--phase", "runtime", "--require-toolchain"]' in dockerfile
     assert 'CMD ["python", "jetos.py", "doctor"]' in dockerfile
+    assert "VOLUME [\"/jetos/.build\"]" in dockerfile
 
     dockerignore = (ROOT / ".dockerignore").read_text(encoding="utf-8")
     assert "source-brain/linux" in dockerignore
@@ -60,8 +61,12 @@ def main() -> int:
     dev = (ROOT / "tools/dev.py").read_text(encoding="utf-8")
     assert 'BUILD_REVISION = BUILD / ".jetos-build-revision"' in dev
     assert '["git", "rev-parse", "HEAD"]' in dev
+    assert 'def clear_build_directory()' in dev
+    assert 'for child in BUILD.iterdir()' in dev
+    assert 'shutil.rmtree(BUILD)' not in dev
     assert 'def prepare_revision_build()' in dev
-    assert 'shutil.rmtree(BUILD)' in dev
+    assert 'clear_build_directory()' in dev
+    assert 'JETOS source copy complete: {name}' in dev
     assert 'revision = prepare_revision_build()' in dev
     assert 'print(f"  JetOS revision: {revision}")' in dev
 
