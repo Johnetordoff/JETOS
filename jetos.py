@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import os
 from pathlib import Path
+import platform
 import shutil
 import subprocess
 import sys
@@ -83,6 +84,20 @@ def ensure_dev_sources() -> None:
     )
 
 
+def apple_silicon_docker_platform():
+    """Pin native ARM64 Docker execution on Apple-silicon Macs.
+
+    Docker Desktop normally selects this automatically, but an inherited
+    DOCKER_DEFAULT_PLATFORM=linux/amd64 or equivalent user setting can silently
+    force x86 emulation. JETOS wants a native ARM64 container so the JetLang
+    runtime and JetOS kernel are built for ARM64 before QEMU boots them.
+    """
+    machine = platform.machine().lower()
+    if sys.platform == "darwin" and machine in {"arm64", "aarch64"}:
+        return "linux/arm64"
+    return None
+
+
 def require_docker() -> str:
     """Require both the Docker CLI and a reachable Docker daemon."""
     docker = shutil.which("docker")
@@ -109,34 +124,47 @@ def require_docker() -> str:
             f"dev`. Docker reported: {detail}"
         )
     print(f"Docker daemon: {probe.stdout.strip()}")
+    docker_platform = apple_silicon_docker_platform()
+    if docker_platform:
+        print(f"Docker platform: {docker_platform} (Apple Silicon native)")
     return docker
 
 
 def docker_test() -> None:
     """Build and execute JETOS userspace/OS qualification in Docker."""
     docker = require_docker()
-    run([
-        docker,
-        "build",
-        "--pull",
+    docker_platform = apple_silicon_docker_platform()
+    build_command = [docker, "build", "--pull"]
+    if docker_platform:
+        build_command.extend(["--platform", docker_platform])
+    build_command.extend([
         "--target", TEST_TARGET,
         "--tag", DOCKER_TEST_IMAGE,
         ".",
     ])
-    run([docker, "run", "--rm", DOCKER_TEST_IMAGE])
+    run(build_command)
+    run_command = [docker, "run", "--rm"]
+    if docker_platform:
+        run_command.extend(["--platform", docker_platform])
+    run_command.append(DOCKER_TEST_IMAGE)
+    run(run_command)
 
 
 def docker_dev(build_only: bool) -> None:
     docker = require_docker()
-    run([
-        docker,
-        "build",
-        "--pull",
+    docker_platform = apple_silicon_docker_platform()
+    build_command = [docker, "build", "--pull"]
+    if docker_platform:
+        build_command.extend(["--platform", docker_platform])
+    build_command.extend([
         "--target", DEV_TARGET,
         "--tag", DOCKER_DEV_IMAGE,
         ".",
     ])
+    run(build_command)
     command = [docker, "run", "--rm"]
+    if docker_platform:
+        command.extend(["--platform", docker_platform])
     if sys.stdin.isatty() and sys.stdout.isatty():
         command.append("-it")
     command.extend([

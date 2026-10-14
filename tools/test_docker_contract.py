@@ -12,7 +12,8 @@ SPEC = importlib.util.spec_from_file_location(
 )
 assert SPEC and SPEC.loader
 contract = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(contract)
+spec_loader = SPEC.loader
+spec_loader.exec_module(contract)
 
 
 def main() -> int:
@@ -21,8 +22,12 @@ def main() -> int:
     dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
     assert "qemu-system-arm" in dockerfile
     assert "qemu-system-x86" in dockerfile
+    assert "qemu-system-aarch64" in dockerfile
     assert "strace" in dockerfile
     assert "ENV CC=cc" in dockerfile
+    assert "command -v qemu-system-aarch64" in dockerfile
+    assert "command -v cc" in dockerfile
+    assert "command -v make" in dockerfile
     assert "tools/container_os_qualify.py --phase build --require-toolchain" in dockerfile
     assert 'CMD ["python", "tools/container_os_qualify.py", "--phase", "runtime", "--require-toolchain"]' in dockerfile
     assert 'CMD ["python", "jetos.py", "doctor"]' in dockerfile
@@ -45,6 +50,12 @@ def main() -> int:
     assert '"--init"' in entrypoint
     assert 'ensure_dev_sources()' in entrypoint
     assert 'sys.stdin.isatty() and sys.stdout.isatty()' in entrypoint
+    assert 'def apple_silicon_docker_platform()' in entrypoint
+    assert 'return "linux/arm64"' in entrypoint
+    assert 'Docker platform: {docker_platform} (Apple Silicon native)' in entrypoint
+    assert 'build_command.extend(["--platform", docker_platform])' in entrypoint
+    assert 'run_command.extend(["--platform", docker_platform])' in entrypoint
+    assert 'command.extend(["--platform", docker_platform])' in entrypoint
 
     dev = (ROOT / "tools/dev.py").read_text(encoding="utf-8")
     assert 'BUILD_REVISION = BUILD / ".jetos-build-revision"' in dev
