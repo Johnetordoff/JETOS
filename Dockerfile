@@ -3,9 +3,9 @@ FROM ${PYTHON_IMAGE} AS base
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Bootstrap provider mapping for JETOS build capabilities.  JETOS-owned code
+# Bootstrap provider mapping for JETOS build capabilities. JETOS-owned code
 # asks for semantic capabilities (C compiler, linker, kernel-build tools), not
-# for a compiler vendor.  This Debian-based container currently provides those
+# for a compiler vendor. This Debian-based container currently provides those
 # capabilities with the packages below.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -41,7 +41,7 @@ ENV LC_ALL=C.UTF-8
 ENV JETOS_CONTAINER=1
 ENV CC=cc
 
-# Reproducible JETOS userspace qualification.  The two large frozen source
+# Reproducible JETOS userspace qualification. The two large frozen source
 # submodules are excluded from this build context because this stage tests the
 # JETOS-owned operating-system userspace and repository contract, not a full
 # kernel/CPython rebuild.
@@ -53,7 +53,7 @@ RUN python jetos.py test
 CMD ["python", "tools/container_os_qualify.py", "--phase", "runtime", "--require-toolchain"]
 
 # Fat development environment. `python jetos.py dev` bind-mounts the checkout
-# (including initialized Source Brain trees) at /jetos before build/QEMU work.
+# (including initialized source trees) at /jetos before build/QEMU work.
 # Keep .build on Docker-native Linux storage rather than the macOS bind mount:
 # Linux/CPython source preparation and compiler output contain very large
 # numbers of small files and are dramatically slower over Docker Desktop file
