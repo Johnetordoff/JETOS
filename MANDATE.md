@@ -89,3 +89,11 @@ Authorized provider integrations may include OpenAI, Anthropic, Google Gemini, M
 ## 13. Safety and evidence
 
 Do not describe planned behavior as implemented. Preserve privacy, containment, provenance, reproducibility, machine safety, backup/recovery, explicit capability boundaries, and owner authorization. When evidence is incomplete, make the uncertainty visible rather than inventing certainty.
+
+## 14. Build acceleration and kernel reduction
+
+Build acceleration must preserve correctness. A cached compiler result or reusable kernel artifact may be accepted only when its cache key covers every material input required to distinguish a valid result, including relevant source/provenance, target architecture, configuration, toolchain identity, and JetOS build-policy inputs. Unknown, incomplete, or changed inputs invalidate the cache; speed is never permission to reuse an unproven artifact.
+
+Do not rebuild an unchanged kernel merely because unrelated JetOS or JetLang code changed when a correctness-preserving kernel cache can prove that all kernel-relevant inputs are identical.
+
+Kernel reduction is conservative and incremental. Remove only capabilities for which there is evidence that JetOS does not require them. A reduced kernel configuration is not proven by compilation alone: before the reduction is treated as qualified, the newly built kernel must satisfy the integrated-runtime qualification in section 4, including the supported JetLang/standard-library surface.
