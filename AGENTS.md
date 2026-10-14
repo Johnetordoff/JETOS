@@ -9,7 +9,7 @@ Before changing JetOS, read `MANDATE.md`, `ARCHITECTURE.md`, `README.md`, `ODROI
 - JetLang is the JetOS language/runtime and is CPython-derived. Preserve Python semantics and the supported standard-library surface while allowing deliberate implementation improvement.
 - Use Python/JetLang for project-owned high-level logic by default. Keep C/assembly confined to real native boundaries.
 - JetOS has first-class `x86_64`, `armv7`, and `arm64` targets; the ODROID-HC1 is the current physical reference target.
-- Use `source/` for controlled external/native source and dependency source. Do not introduce a “brain” concept or terminology into JetOS.
+- Use `source/` for controlled external/native source and dependency source.
 - Do not add Node.js, a JavaScript package/build stack, GitHub Actions, or unnecessary third-party SDK/dependency ecosystems.
 - Distinguish implemented behavior from plans. Preserve provenance and exact source pins.
 - Runtime-affecting source work must qualify the newly built JetOS kernel and newly built JetLang runtime together where the environment supports it.
