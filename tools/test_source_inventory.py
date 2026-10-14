@@ -16,6 +16,21 @@ def main() -> int:
         (root / "Makefile").write_text("all:\n\techo ok\n", encoding="utf-8")
         (root / "binary.bin").write_bytes(b"\x00abc")
 
+        # Generated accounting/build material must not recursively inflate the
+        # source measurement on later runs.
+        (root / "Temporary Bullshit/output").mkdir(parents=True)
+        (root / "Temporary Bullshit/output/source-tree.txt").write_text(
+            "generated\n", encoding="utf-8"
+        )
+        (root / "artifacts/source-inventory").mkdir(parents=True)
+        (root / "artifacts/source-inventory/source-inventory.json").write_text(
+            "{}\n", encoding="utf-8"
+        )
+        (root / ".build").mkdir()
+        (root / ".build/object.o").write_bytes(b"generated")
+        (root / "__pycache__").mkdir()
+        (root / "__pycache__/cache.pyc").write_bytes(b"generated")
+
         data = source_inventory.scan(root)
         summary = data["summary"]
         assert summary["files"] == 3

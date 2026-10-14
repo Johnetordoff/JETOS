@@ -3,7 +3,8 @@
 
 The inventory intentionally walks initialized submodule working trees so Linux,
 the CPython-derived JetLang lineage, and source-brain/shared can be measured as
-one source estate. Git metadata is excluded; source files are not.
+one source estate. Git/build metadata and the inventory's own generated output
+are excluded; authored source files are not.
 """
 from __future__ import annotations
 
@@ -24,6 +25,11 @@ SPECIAL_TYPES = {
     "Dockerfile": "Dockerfile",
     "LICENSE": "LICENSE",
     "COPYING": "COPYING",
+}
+IGNORED_DIR_NAMES = {".git", ".build", "__pycache__"}
+IGNORED_RELATIVE_DIRS = {
+    "artifacts/source-inventory",
+    "Temporary Bullshit/output",
 }
 
 
@@ -57,7 +63,15 @@ def count_text_lines(path: Path) -> int:
     return lines
 
 
+def should_descend(root: Path, dirpath: str, name: str) -> bool:
+    if name in IGNORED_DIR_NAMES:
+        return False
+    child = (Path(dirpath) / name).relative_to(root).as_posix()
+    return child not in IGNORED_RELATIVE_DIRS
+
+
 def scan(root: Path) -> dict[str, Any]:
+    root = root.resolve()
     entries: list[dict[str, Any]] = []
     by_type: dict[str, dict[str, int]] = defaultdict(
         lambda: {"files": 0, "bytes": 0, "text_lines": 0}
@@ -65,7 +79,9 @@ def scan(root: Path) -> dict[str, Any]:
     unreadable: list[str] = []
 
     for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
-        dirnames[:] = sorted(name for name in dirnames if name != ".git")
+        dirnames[:] = sorted(
+            name for name in dirnames if should_descend(root, dirpath, name)
+        )
         for filename in sorted(filenames):
             path = Path(dirpath) / filename
             rel = path.relative_to(root).as_posix()
@@ -105,7 +121,7 @@ def scan(root: Path) -> dict[str, Any]:
     symlinks = sum(1 for item in entries if item["symlink"])
 
     return {
-        "root": str(root.resolve()),
+        "root": str(root),
         "summary": {
             "files": len(entries),
             "bytes": total_bytes,

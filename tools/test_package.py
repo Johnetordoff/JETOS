@@ -23,6 +23,16 @@ def fake_make_rootfs(rootfs: Path, python: Path, stdlib: Path) -> None:
         shutil.rmtree(rootfs)
     (rootfs / "jetos").mkdir(parents=True)
     (rootfs / "runtime-marker").write_text("runtime\n", encoding="utf-8")
+    # Deliberately stage both plausible locations. Skinny packaging must remove
+    # them even if a future rootfs builder accidentally copies development junk.
+    (rootfs / package.TEMPORARY_BULLSHIT_DIRNAME).mkdir()
+    (rootfs / package.TEMPORARY_BULLSHIT_DIRNAME / "count_loc.py").write_text(
+        "temporary\n", encoding="utf-8"
+    )
+    (rootfs / "jetos" / package.TEMPORARY_BULLSHIT_DIRNAME).mkdir()
+    (rootfs / "jetos" / package.TEMPORARY_BULLSHIT_DIRNAME / "report.txt").write_text(
+        "temporary\n", encoding="utf-8"
+    )
 
 
 def fake_build_initramfs(rootfs: Path, output: Path) -> None:
@@ -85,6 +95,8 @@ def main() -> int:
             assert (rootfs / "usr/src/linux/Makefile").is_file()
             assert (rootfs / "jetos/tools/stdlib_qualify.py").is_file()
             assert (rootfs / "jetos/stdlib-qualify").read_text(encoding="utf-8") == "fast\n"
+            assert (rootfs / package.TEMPORARY_BULLSHIT_DIRNAME).is_dir()
+            assert (rootfs / "jetos" / package.TEMPORARY_BULLSHIT_DIRNAME).is_dir()
 
             package.package_rootfs(
                 profile=package.PROFILE_SKINNY,
@@ -99,6 +111,8 @@ def main() -> int:
             assert not (rootfs / "usr/src/linux").exists()
             assert not (rootfs / "jetos/tools/stdlib_qualify.py").exists()
             assert not (rootfs / "jetos/stdlib-qualify").exists()
+            assert not (rootfs / package.TEMPORARY_BULLSHIT_DIRNAME).exists()
+            assert not (rootfs / "jetos" / package.TEMPORARY_BULLSHIT_DIRNAME).exists()
             assert output.read_bytes() == b"jetos-test-initramfs"
 
             try:

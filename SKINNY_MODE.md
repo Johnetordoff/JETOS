@@ -25,7 +25,8 @@ Fat Mode may include development-only material such as:
 - extensive test fixtures and qualification tooling;
 - image-generation and flashing tools;
 - benchmark and comparison manifests for optimization/reduction experiments;
-- exact source/configuration provenance for every promoted kernel and runtime artifact.
+- exact source/configuration provenance for every promoted kernel and runtime artifact;
+- the top-level `Temporary Bullshit/` workspace and its source-accounting scripts/output while that temporary development aid is still needed.
 
 Fat Mode is not the target footprint for the HC1 or another production device.
 
@@ -49,8 +50,11 @@ Skinny Mode must **not** contain:
 - the complete Linux source tree;
 - the CPython source tree;
 - Source Brain development worktrees;
+- the top-level `Temporary Bullshit/` directory, any copy of it under `/jetos`, or its generated inventory/report output;
 - development-only compilers, linkers, headers or package/build machinery;
 - Fat-mode test fixtures, regression suites, fuzz corpora, benchmark harnesses or build diagnostics merely because they were used to qualify the image.
+
+`tools/package.py` must explicitly remove `Temporary Bullshit` from a candidate Skinny rootfs if any prior build step stages it. The repository packaging test must keep this invariant covered.
 
 A runtime self-check may remain only when it is itself part of safe normal operation. The development test suite belongs to Fat Mode.
 
