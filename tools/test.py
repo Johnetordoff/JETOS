@@ -71,6 +71,7 @@ def main() -> int:
     run(sys.executable, "tools/test_architectures.py")
     run(sys.executable, "tools/test_package.py")
     run(sys.executable, "tools/test_source_brain.py")
+    run(sys.executable, "tools/test_source_inventory.py")
     run(sys.executable, "tools/test_kernel_codesign_baseline.py")
     run(sys.executable, "tools/test_docker_contract.py")
     run(sys.executable, "tools/test_work_server.py")

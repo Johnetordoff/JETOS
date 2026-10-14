@@ -20,8 +20,10 @@ def main() -> int:
     checks += 6
 
     assert (ROOT / "source-brain/README.md").is_file()
+    assert (ROOT / "source-brain/shared").is_dir()
+    assert (ROOT / "source-brain/shared/README.md").is_file()
     assert not (ROOT / "vendor").exists()
-    checks += 2
+    checks += 4
 
     dev = (ROOT / "tools/dev.py").read_text(encoding="utf-8")
     assert 'SOURCE_BRAIN = ROOT / "source-brain"' in dev
