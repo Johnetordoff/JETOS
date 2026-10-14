@@ -1,11 +1,19 @@
 # JetOS shared Langkernel source
 
-`source-brain/shared/` is the first explicitly shared source area for code used by both of JetOS's native source lineages:
+`source-brain/shared/` is the explicitly shared source area for code used by both sides of the integrated JetOS/JetLang runtime:
 
 - `source-brain/linux/` — the kernel lineage used to build the JetOS kernel;
-- `source-brain/cpython/` — the CPython-derived lineage used to build JetLang.
+- `source-brain/cpython/` — the CPython-derived lineage being improved into JetLang.
 
-These are not separate products. They are source components of one JetOS/JetLang runtime.
+JetLang is an improved CPython descendant; **CPython 2** is a useful informal mental model, while **JetLang** is the formal project name. These trees are not separate products.
+
+`JETLANG_ARCHITECTURE.md` is canonical for language identity and the one-repository rule.
+
+## Repository boundary
+
+The target source-control layout is one outer JETOS repository containing ordinary tracked `linux/`, `cpython/`, and `shared/` trees. No Source Brain tree should remain a Git submodule or nested Git repository after migration. Upstream Git URLs and commit IDs are provenance, not nested repository ownership.
+
+During the temporary bootstrap transition, do not delete a gitlink until its pinned working tree has been absorbed as ordinary outer-repository content. `tools/absorb_source_brain.py` performs that native-Git migration.
 
 ## Purpose
 
@@ -15,34 +23,34 @@ Do not use this directory as a miscellaneous `utils` bucket. Shared modules must
 
 ## Required acceptance path for runtime changes
 
-A native consolidation is not considered qualified merely because an isolated unit test passes or because the old upstream kernel/interpreter still builds. For any change that affects the integrated runtime, the target qualification path is:
+A native consolidation is not considered qualified merely because an isolated unit test passes or because old upstream components still build. For changes affecting the integrated runtime, the target qualification path is:
 
 1. modify the JetOS-owned source;
-2. build the resulting **new JetOS kernel** from the current recorded Linux lineage plus JetOS changes;
-3. build the resulting **new JetLang interpreter/runtime** from the current recorded CPython-derived lineage plus JetOS changes;
-4. launch that newly built JetLang interpreter on/with the newly built JetOS runtime where the available environment supports it;
-5. run the relevant JetLang/CPython-derived regression tests through the newly built interpreter;
-6. run JetOS native and same-runtime integration tests;
-7. exercise representative real runtime behavior, including networking; where practical, launch a small web server and verify that a browser/client can reach it;
-8. record exact source revisions, build configuration, results, and blockers.
+2. build the resulting **new JetOS kernel** from the tracked Linux lineage plus JetOS changes;
+3. build the resulting **new JetLang interpreter/runtime** from the tracked CPython-derived lineage plus JetLang changes;
+4. launch that newly built JetLang runtime on/with the newly built JetOS runtime where the environment supports it;
+5. run relevant CPython-derived regression tests as a JetLang compatibility corpus;
+6. run JetLang-native, JetOS-native and same-runtime integration tests;
+7. exercise representative runtime behavior, including networking where practical;
+8. record exact outer-repository revision, upstream provenance, build configuration, results and blockers.
 
-Testing only the old upstream Linux kernel, an old/prebuilt interpreter, or two isolated source trees does not satisfy the integrated-runtime qualification goal.
+Testing only upstream Linux, stock/prebuilt CPython, or isolated source trees does not satisfy the integrated-runtime qualification goal.
 
 ## Metrics must not block engineering
 
-Source inventory, total bytes, file-type enumeration, full file-tree capture, and LOC accounting are required engineering measurements, but incomplete global metrics must never stop useful source work. If a total inventory is temporarily unavailable, document the reason, measure the changed files/PR delta accurately, continue with bounded engineering, and keep the full inventory work as a separate tracked task.
+Source inventory, bytes, file-type enumeration, tree capture and LOC accounting are required engineering measurements, but incomplete global metrics must never stop useful source work. If a total inventory is temporarily unavailable, document why, measure changed files accurately, continue bounded engineering, and keep full inventory work separately tracked.
 
-Do not make one GitHub API request per source file merely to build an inventory. Prefer local checkout traversal, Git-native recursive listings, recursive tree APIs, or other batched mechanisms. Once the full Linux and CPython-derived source trees are locally available, LOC and file-type accounting should be deterministic and repeatable.
+Prefer local checkout traversal, Git-native listings or batched recursive APIs over one remote request per source file. Once the source trees are ordinary tracked content in the unified checkout, inventory and LOC accounting should be deterministic and repeatable.
 
 ## Convergence direction
 
-The current physical layout remains:
+The canonical physical layout is:
 
 ```text
 source-brain/
   linux/
-  cpython/
+  cpython/   # CPython-derived JetLang lineage
   shared/
 ```
 
-The long-term goal is increasing shared ownership where it genuinely simplifies JetOS. Code may move from the Linux or CPython-derived lineages into `shared/` only in small, testable steps. The final architecture may eventually converge further, but directory movement is not itself the objective: a smaller, clearer, integrated JetOS/JetLang runtime is.
+All three directories belong to the same outer Git repository. The goal is increasing shared ownership where it genuinely simplifies JetOS/JetLang—not directory movement for its own sake.
