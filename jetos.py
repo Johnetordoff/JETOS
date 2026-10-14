@@ -84,12 +84,12 @@ def ensure_dev_sources() -> None:
     )
 
 
-def apple_silicon_docker_platform() -> str | None:
+def apple_silicon_docker_platform():
     """Pin native ARM64 Docker execution on Apple-silicon Macs.
 
     Docker Desktop normally selects this automatically, but an inherited
     DOCKER_DEFAULT_PLATFORM=linux/amd64 or equivalent user setting can silently
-    force x86 emulation.  JETOS wants a native ARM64 container so the JetLang
+    force x86 emulation. JETOS wants a native ARM64 container so the JetLang
     runtime and JetOS kernel are built for ARM64 before QEMU boots them.
     """
     machine = platform.machine().lower()
