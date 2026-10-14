@@ -30,8 +30,6 @@ source/
   ports/
 ```
 
-Do not use a “brain” concept or terminology for JetOS source organization.
-
 The target source-control architecture is one outer JETOS Git repository containing ordinary tracked source trees, with no nested Git repositories or nested `.git` metadata. Transitional submodules may remain only until the exact pinned Linux and CPython working trees are safely absorbed. Upstream repositories are provenance/update sources; their URLs, versions, licenses, and commit IDs are recorded as JetOS-owned metadata.
 
 ## Integrated-runtime qualification
