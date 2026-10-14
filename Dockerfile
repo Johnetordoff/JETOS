@@ -54,10 +54,15 @@ CMD ["python", "tools/container_os_qualify.py", "--phase", "runtime", "--require
 
 # Fat development environment. `python jetos.py dev` bind-mounts the checkout
 # (including initialized Source Brain trees) at /jetos before build/QEMU work.
+# Keep .build on Docker-native Linux storage rather than the macOS bind mount:
+# Linux/CPython source preparation and compiler output contain very large
+# numbers of small files and are dramatically slower over Docker Desktop file
+# sharing. The build-revision marker still invalidates stale artifacts.
 # On Apple Silicon, jetos.py pins this image/run to linux/arm64. Debian's
 # qemu-system-arm package supplies qemu-system-aarch64; fail the image build
 # immediately if that or the native ARM64 build toolchain is unavailable.
 FROM base AS dev
+VOLUME ["/jetos/.build"]
 RUN command -v qemu-system-aarch64 \
     && command -v cc \
     && command -v make \
