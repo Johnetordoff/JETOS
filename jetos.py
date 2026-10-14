@@ -14,6 +14,10 @@ DOCKER_TEST_IMAGE = "jetos:fat-test"
 DOCKER_DEV_IMAGE = "jetos:dev"
 TEST_TARGET = "test"
 DEV_TARGET = "dev"
+SOURCE_MARKERS = {
+    "source-brain/linux": "Makefile",
+    "source-brain/cpython": "Python/sysmodule.c",
+}
 
 
 def run(args: list[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -28,6 +32,55 @@ def python_tool(name: str, args: list[str]) -> None:
 def tests() -> None:
     for script in ("test.py", "test_unicode.py", "test_language.py", "test_bootstrap.py"):
         python_tool(script, [])
+
+
+def missing_source_trees() -> list[str]:
+    return [
+        tree
+        for tree, marker in SOURCE_MARKERS.items()
+        if not (ROOT / tree / marker).is_file()
+    ]
+
+
+def ensure_dev_sources() -> None:
+    """Make the top-level dev command own its source prerequisites.
+
+    Transitional checkouts still record Linux and JetLang/CPython as gitlinks.
+    A fresh clone may therefore have empty source-brain directories.  The Mac
+    Docker entry point must initialize those exact pinned sources before it
+    bind-mounts the checkout into the development container.  After the
+    one-repository migration, no submodule command is used; ordinary tracked
+    source trees must already be present.
+    """
+    missing = missing_source_trees()
+    if not missing:
+        return
+
+    if (ROOT / ".gitmodules").is_file():
+        git = shutil.which("git")
+        if not git:
+            raise SystemExit(
+                "JETOS development source preparation requires Git while the "
+                "repository is in its transitional Source Brain layout."
+            )
+        run([
+            git,
+            "submodule",
+            "update",
+            "--init",
+            "--recursive",
+            "source-brain/linux",
+            "source-brain/cpython",
+        ])
+        missing = missing_source_trees()
+        if not missing:
+            return
+
+    raise SystemExit(
+        "JETOS development source trees are missing: "
+        + ", ".join(missing)
+        + ". A complete checkout is required before the kernel and JetLang can build."
+    )
 
 
 def require_docker() -> str:
@@ -53,7 +106,7 @@ def require_docker() -> str:
             "JETOS Docker qualification cannot start: the Docker CLI exists but "
             "the Docker daemon is not reachable. Start/connect the daemon or set "
             "the normal Docker host configuration, then rerun `python jetos.py "
-            f"docker-test`. Docker reported: {detail}"
+            f"dev`. Docker reported: {detail}"
         )
     print(f"Docker daemon: {probe.stdout.strip()}")
     return docker
@@ -83,16 +136,15 @@ def docker_dev(build_only: bool) -> None:
         "--tag", DOCKER_DEV_IMAGE,
         ".",
     ])
-    command = [
-        docker,
-        "run",
-        "--rm",
-        "-it",
+    command = [docker, "run", "--rm"]
+    if sys.stdin.isatty() and sys.stdout.isatty():
+        command.append("-it")
+    command.extend([
         "-v",
         f"{ROOT}:/jetos",
         "-w",
         "/jetos",
-    ]
+    ])
     if os.name == "posix" and Path("/dev/kvm").exists():
         command.extend(["--device", "/dev/kvm"])
     command.extend([
@@ -188,6 +240,7 @@ def main() -> int:
     elif args.command == "docker-test":
         docker_test()
     elif args.command == "dev":
+        ensure_dev_sources()
         if args.native:
             python_tool("dev.py", ["build" if args.build_only else "run"])
         else:
