@@ -18,6 +18,19 @@ UPSTREAM_COMMIT = "8e6e75d9102e39bed2a2b279203a396741180f12"
 FORK_BRANCH = "jetos-language"
 JETOS_LANGUAGE_VERSION = "0.1"
 
+LEGACY_IMPL_OLD = (
+    '/* sys.implementation values */\n'
+    '#define NAME "cpython"\n'
+    'const char *_PySys_ImplName = NAME;'
+)
+LEGACY_IMPL_NEW = (
+    '/* sys.implementation values */\n'
+    '#define NAME "jetos"\n'
+    'const char *_PySys_ImplName = NAME;'
+)
+MODERN_IMPL_OLD = '#define _PY_IMPL_NAME "cpython"'
+MODERN_IMPL_NEW = '#define _PY_IMPL_NAME "jetos"'
+
 
 def run(
     args: list[str],
@@ -47,6 +60,29 @@ def require_source_tree(source: Path) -> None:
             "not a complete CPython source tree; missing: "
             + ", ".join(missing)
         )
+
+
+def implementation_is_jetos(text: str) -> bool:
+    """Recognize both the pinned 3.14 layout and newer CPython layouts."""
+    return LEGACY_IMPL_NEW in text or MODERN_IMPL_NEW in text
+
+
+def patch_implementation_name(text: str) -> str:
+    """Rename CPython's implementation identity across supported source layouts.
+
+    CPython 3.14.8 uses a local NAME macro for sys.implementation, while newer
+    source uses _PY_IMPL_NAME. Keep both forms supported so upstream intake does
+    not immediately break the JetLang identity patcher again.
+    """
+    if LEGACY_IMPL_OLD in text:
+        return text.replace(LEGACY_IMPL_OLD, LEGACY_IMPL_NEW, 1)
+    if MODERN_IMPL_OLD in text:
+        return text.replace(MODERN_IMPL_OLD, MODERN_IMPL_NEW, 1)
+    if implementation_is_jetos(text):
+        return text
+    raise SystemExit(
+        "cannot locate supported sys.implementation identity in Python/sysmodule.c"
+    )
 
 
 def patch_source(source: Path) -> list[Path]:
@@ -83,12 +119,7 @@ def patch_source(source: Path) -> list[Path]:
             1,
         )
 
-    old_impl = '#define _PY_IMPL_NAME "cpython"'
-    new_impl = '#define _PY_IMPL_NAME "jetos"'
-    if old_impl in text:
-        text = text.replace(old_impl, new_impl, 1)
-    elif new_impl not in text:
-        raise SystemExit("cannot locate _PY_IMPL_NAME in Python/sysmodule.c")
+    text = patch_implementation_name(text)
 
     marker = 'SET_SYS_FROM_STRING("version", Py_GetVersion());'
     jetos_line = (
@@ -145,9 +176,8 @@ def source_status(source: Path) -> None:
     print(f"head: {head}")
     print(f"branch: {branch or '(detached)'}")
     print(f"CPython base version: {UPSTREAM_VERSION}")
-    implementation_is_jetos = '#define _PY_IMPL_NAME "jetos"' in text
+    print(f"JETOS implementation name: {'yes' if implementation_is_jetos(text) else 'no'}")
     identity_header_exists = (source / "Include/jetos.h").exists()
-    print(f"JETOS implementation name: {'yes' if implementation_is_jetos else 'no'}")
     print(f"JETOS identity header: {'yes' if identity_header_exists else 'no'}")
 
 
