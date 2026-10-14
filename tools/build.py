@@ -40,6 +40,7 @@ ARCH_FIRST_BOOT_KERNEL = {
         "CONFIG_ARM64": "y",
         "CONFIG_SERIAL_AMBA_PL011": "y",
         "CONFIG_SERIAL_AMBA_PL011_CONSOLE": "y",
+        "CONFIG_KVM": "n",
     },
 }
 
