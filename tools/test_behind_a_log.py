@@ -41,8 +41,10 @@ def main() -> int:
     check(kernel["same_line"] == "6.12.112", "kernel longterm parse")
     checks += 2
 
-    py = mod.python_state("<li>Python 3.14.8</li><li>Python 3.15.0</li>")
-    check(py["stable"] == "3.15.0", "python stable parse")
+    py = mod.python_state(
+        "<li>Python 3.14.8</li><li>Python 3.15.0</li><li>Python 3.16.0a1</li>"
+    )
+    check(py["stable"] == "3.15.0", "python stable parse ignores preview")
     checks += 1
 
     original_docs = mod.DOCS
