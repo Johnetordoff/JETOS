@@ -13,6 +13,7 @@ import sys
 ROOT = Path(__file__).resolve().parent
 DOCKER_TEST_IMAGE = "jetos:fat-test"
 DOCKER_DEV_IMAGE = "jetos:dev"
+DOCKER_DEV_BUILD_VOLUME = "jetos-dev-build"
 TEST_TARGET = "test"
 DEV_TARGET = "dev"
 SOURCE_MARKERS = {
@@ -176,9 +177,15 @@ def docker_dev(build_only: bool) -> None:
     command.extend([
         "-v",
         f"{ROOT}:/jetos",
+        "-v",
+        f"{DOCKER_DEV_BUILD_VOLUME}:/jetos/.build",
         "-w",
         "/jetos",
     ])
+    print(
+        f"JETOS Docker build workspace: {DOCKER_DEV_BUILD_VOLUME} -> /jetos/.build",
+        flush=True,
+    )
     if os.name == "posix" and Path("/dev/kvm").exists():
         command.extend(["--device", "/dev/kvm"])
     command.extend([
