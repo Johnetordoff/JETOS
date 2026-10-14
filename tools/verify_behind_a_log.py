@@ -3,9 +3,9 @@
 
 This tool is deliberately dependency-free. It reads the currently pinned
 versions from tools/dev.py, queries authoritative upstream release metadata,
-prints the drift, and optionally updates the two persistent Behind a Log
-Markdown documents. A history entry is appended only when either the JETOS pin
-or the detected upstream release changes.
+prints the drift/integration backlog, and optionally updates the two persistent
+Behind a Log Markdown documents. A history entry is appended only when either
+the JETOS baseline or the detected upstream release changes.
 """
 from __future__ import annotations
 
@@ -167,25 +167,26 @@ def render_gentoo(pins, linux, checked: str) -> tuple[str, str, str]:
 
 
 def render_python(pins, py, checked: str) -> tuple[str, str, str]:
-    pinned = pins["python_version"]
+    baseline = pins["python_version"]
     latest = py["stable"]
+    backlog = drift_description(baseline, latest, "feature")
     status = f"""Checked: {checked}
 
-- JetLang CPython ancestor pinned by JetOS: **{pinned}** (`{pins['python_commit']}`)
-- Latest stable CPython: **{latest}**
-- Stable drift: **{drift_description(pinned, latest, 'feature')}**
+- JetLang integration baseline: **{baseline} lineage** (`{pins['python_commit']}` initial upstream provenance)
+- Latest stable CPython observed: **{latest}**
+- Integration backlog: **{backlog}**
 - Latest release notes: {python_release_url(latest)}
 - Major-series change notes: https://docs.python.org/3/whatsnew/{'.'.join(latest.split('.')[:2])}.html
 - Release index: {PYTHON_DOWNLOADS}
 """
-    fingerprint = "python:%s:%s" % (pinned, latest)
-    entry = f"""### {checked[:10]} — Python drift check
+    fingerprint = "python:%s:%s" % (baseline, latest)
+    entry = f"""### {checked[:10]} — Python integration-backlog check
 
-- JetLang ancestor pin: `{pinned}` / `{pins['python_commit']}`
+- JetLang baseline: `{baseline}` lineage / initial upstream provenance `{pins['python_commit']}`
 - Upstream stable observed: `{latest}`
-- Drift summary: {drift_description(pinned, latest, 'feature')}.
+- Integration backlog: {backlog}.
 - Official upstream change sources: {python_release_url(latest)} and https://docs.python.org/3/whatsnew/{'.'.join(latest.split('.')[:2])}.html
-- Digest rule: whenever a new stable Python release is detected, append the important language/runtime/build/stdlib changes here before or alongside the JetLang rebase work.
+- Digest rule: whenever a new stable Python release is detected, append the important language/runtime/build/stdlib changes here before or alongside JetLang integration work. Upstream source is a change/reference stream; it does not replace the JetLang-owned tree.
 """
     return status, fingerprint, entry
 
@@ -210,8 +211,9 @@ def write_logs(pins, linux, py, checked: str) -> None:
         "Linux kernel lineage as the numeric drift measure while retaining Gentoo as source/build/configuration intelligence."
     )
     python_intro = (
-        "This is the persistent upstream-drift ledger for JetLang's CPython lineage. JetLang deliberately diverges, "
-        "but stable CPython releases remain first-class source and compatibility inputs."
+        "This is the persistent upstream-integration backlog for JetLang's CPython lineage. JetLang deliberately diverges "
+        "and owns its source after the initial import; stable CPython releases remain compatibility, regression-test, "
+        "standard-library, bug-fix, and change-reference inputs rather than replacement source trees."
     )
 
     g_status, g_fp, g_entry = render_gentoo(pins, linux, checked)
@@ -229,7 +231,7 @@ def write_logs(pins, linux, py, checked: str) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="measure JetOS upstream version drift")
+    parser = argparse.ArgumentParser(description="measure JetOS upstream version drift/integration backlog")
     parser.add_argument("--write", action="store_true", help="refresh Behind a Log documents and append new history fingerprints")
     parser.add_argument("--json", action="store_true", help="emit machine-readable status")
     args = parser.parse_args()
@@ -252,7 +254,7 @@ def main() -> int:
             print("  pinned longterm line: %s -> %s (%s)" % (
                 pins["linux_version"], linux["same_line"], drift_description(pins["linux_version"], linux["same_line"], "kernel")
             ))
-        print("Behind a Log — Python: %s -> %s (%s)" % (
+        print("Behind a Log — Python integration backlog: %s -> %s (%s)" % (
             pins["python_version"], py["stable"], drift_description(pins["python_version"], py["stable"], "feature")
         ))
     return 0

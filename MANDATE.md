@@ -50,9 +50,17 @@ Full global LOC/byte accounting must never block engineering work.
 
 Fat Mode owns source, build, diagnosis, qualification, and development bulk. Skinny Mode is a qualified projection containing the runtime and compact provenance needed by a target. Skinny must not silently carry full development source trees, test fixtures, or temporary work material.
 
-## 6. Upstream currency
+## 6. Upstream currency and JetLang version integration
 
-JetLang should track stable CPython maintenance releases promptly, with exact pins and full Fat qualification before a release becomes the Skinny basis. If a Python update exposes a missing Linux/kernel capability, improve the JetOS substrate rather than silently trimming protected Python behavior.
+JetLang's current stabilization baseline is the Python 3.14 lineage. The immediate engineering goal is to make that JetLang baseline build, run, and pass integrated qualification reliably before promoting the next feature-series behavior.
+
+After the initial CPython-derived source has been absorbed into the JetLang-owned tree, upstream CPython is not a replacement tree to pull, rebase, or overwrite onto JetLang. Later CPython releases are change/reference inputs. To advance from the 3.14 baseline to 3.15, JetOS must inspect the upstream 3.15 release notes, diffs, tests, standard-library changes, interpreter/compiler changes, C API/ABI changes, build changes, and relevant bug fixes; reconcile those changes into the existing JetLang code; preserve deliberate JetLang divergences; and record the exact upstream provenance used for that integration.
+
+A JetLang version advance is complete only when the intended upstream change set has been incorporated into the JetLang-owned source and the resulting runtime passes the integrated qualification in section 4. Do not claim that JetLang is at a newer Python feature series merely because upstream source exists or metadata was updated.
+
+The Behind-a-Log records are integration-backlog ledgers. They must show the current JetLang compatibility baseline, the newer upstream release(s) available for review, the changes still to reconcile, and the qualification state. They are not instructions to replace JetLang with a fresh CPython checkout.
+
+If a Python update exposes a missing Linux/kernel capability, improve the JetOS substrate rather than silently trimming protected Python behavior.
 
 Gentoo is preferred source/build/package intelligence, not JetOS identity and not an unconditional rolling-runtime dependency. Upstream drift must remain visible in the existing Behind-a-Log records.
 
