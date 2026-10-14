@@ -27,6 +27,9 @@ RUN apt-get update \
         libreadline-dev \
         libsqlite3-dev \
         liblzma-dev \
+        libgdbm-dev \
+        libgdbm-compat-dev \
+        tk-dev \
         uuid-dev \
         xz-utils \
         qemu-system-x86 \
