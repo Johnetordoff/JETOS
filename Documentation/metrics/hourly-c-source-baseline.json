@@ -7,17 +7,17 @@
     "code_loc": 311
   },
   "paths": [
-    "ports/gcc/ordered_hash_map_c/ordered_hash_map.c",
-    "ports/gcc/ordered_hash_map_c/ordered_hash_map.h"
+    "source/ports/gcc/ordered_hash_map_c/ordered_hash_map.c",
+    "source/ports/gcc/ordered_hash_map_c/ordered_hash_map.h"
   ],
   "test_paths": [
-    "ports/gcc/ordered_hash_map_c/test_ordered_hash_map.c"
+    "source/ports/gcc/ordered_hash_map_c/test_ordered_hash_map.c"
   ],
   "loc_method": "Count a physical line as code LOC when non-comment C tokens remain after stripping // and /* */ comments while preserving string and character literals; track comment-only and blank lines separately.",
   "excluded_from_primary_metric": [
     "tests",
-    "source-brain/linux",
-    "source-brain/cpython",
+    "source/linux",
+    "source/cpython",
     "generated code",
     "build products",
     "temporary files"
