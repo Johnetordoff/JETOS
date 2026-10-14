@@ -67,7 +67,15 @@ def build_and_run(name: str, extra_flags: list[str]) -> None:
 
 def main() -> int:
     assert_no_github_actions()
-    run(sys.executable, "-m", "compileall", "-q", "src", "tools")
+    run(
+        sys.executable,
+        "-m",
+        "compileall",
+        "-q",
+        "src",
+        "tools",
+        "Temporary Bullshit",
+    )
     run(sys.executable, "tools/test_architectures.py")
     run(sys.executable, "tools/test_package.py")
     run(sys.executable, "tools/test_source_brain.py")
