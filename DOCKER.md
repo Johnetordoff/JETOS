@@ -6,7 +6,7 @@ JETOS uses Docker as a **Fat-mode development and operating-system qualification
 
 ## What “JETOS in Docker” means
 
-The Docker test container is treated as a real JETOS **userspace operating-system environment**: JETOS owns the userspace being qualified and exercises filesystems, mmap, process creation, selectors, Unix sockets, shared memory, `/proc`, `/sys`, `/dev`, and the selected build capabilities from inside that environment.
+The Docker test container is treated as a real JETOS **userspace operating-system environment**: JETOS owns the userspace being qualified and exercises filesystems, mmap, process creation, selectors, Unix sockets, shared memory, `/proc`, `/sys`, `/dev`, and selected build capabilities from inside that environment.
 
 Docker does **not** provide an independent kernel. The container shares the host Linux kernel. JETOS Gen 2 therefore reports this honestly as:
 
@@ -15,7 +15,7 @@ userspace = JETOS
 kernel_model = shared host Linux kernel
 ```
 
-The runtime qualifier runs as PID 1 inside the test container. That lets JETOS exercise its container userspace as the sole intended userspace under test without pretending Docker booted a separate JETOS kernel.
+The runtime qualifier runs as PID 1 inside the test container. That exercises the container userspace as the sole intended userspace under test without pretending Docker booted a separate JETOS kernel.
 
 ## One-command Docker test
 
@@ -23,44 +23,11 @@ The runtime qualifier runs as PID 1 inside the test container. That lets JETOS e
 python jetos.py docker-test
 ```
 
-The command first proves that both parts of the host Docker capability exist:
+The command proves that the Docker CLI exists and the Docker daemon is reachable, then builds the `test` target, runs build-phase OS/capability qualification, runs the repository tests, and starts the resulting image with the runtime qualifier as PID 1. There is no hosted-CI fallback.
 
-1. the `docker` CLI executable is available;
-2. the Docker daemon is reachable.
+JETOS-owned code names tool needs by capability rather than vendor. Native tests use `CC`, defaulting to `cc`. The current Debian image happens to supply those capabilities with packages such as GCC, binutils, QEMU, and strace; that provider mapping is bootstrap detail, not permanent JETOS identity.
 
-If the CLI is absent, JETOS says that directly. If the CLI exists but the daemon/socket/remote Docker host is unavailable, JETOS reports Docker's daemon diagnostic. There is no silent fallback to GitHub Actions or another hosted system.
-
-Then it:
-
-1. builds the Dockerfile `test` target from `python:3.14.8-slim`;
-2. runs the container build-phase OS/capability qualifier;
-3. runs the full ordinary repository test suite inside the image;
-4. starts the resulting image;
-5. runs the JETOS runtime OS qualifier as container PID 1.
-
-The runtime qualifier checks the Python version, Linux substrate, `/proc`, `/sys`, `/dev`, file I/O, mmap, symlinks, selectors, Unix sockets, subprocess creation, shared memory, and required Fat-mode tool capabilities.
-
-A machine executing this test therefore needs a working Docker installation and access to any uncached base-image/package sources needed by `docker build`. A Jenkins worker can provide that environment directly; the repository does not attempt to install or secretly substitute a container engine during qualification.
-
-## Tool capabilities, not vendor names
-
-JETOS-owned code names what it needs by **capability**. For example:
-
-- C compiler;
-- linker;
-- build orchestrator;
-- parser generator;
-- lexer generator;
-- kernel debug-info tool;
-- package-configuration query tool;
-- x86 and ARM system emulators;
-- system-call tracer.
-
-JETOS-owned native tests use `CC` and default to the conventional `cc` command. They do not hard-code `gcc` as the operating-system interface.
-
-The current Debian-based Docker bootstrap happens to satisfy the C-compiler capability with the `gcc` package and maps the other capabilities to Debian packages. That package/provider mapping is bootstrap implementation detail, not the permanent JETOS capability name. JETOS does not yet declare one compiler vendor as part of its OS contract.
-
-## Jenkins on Git
+## Jenkins and the Work Server
 
 The repository `Jenkinsfile` invokes:
 
@@ -68,16 +35,14 @@ The repository `Jenkinsfile` invokes:
 python3 tools/work_server.py run-cycle
 ```
 
-The Work Server then owns the ordinary repository gates, including:
+The Work Server owns the normal gates, including:
 
 ```text
 python jetos.py docker-test
 python jetos.py dev --build-only
 ```
 
-This gives one canonical pipeline definition: Jenkins schedules a Git checkout and a Work Server cycle; the Work Server decides how JETOS is qualified. If automatic improvement is enabled on the worker, the same cycle can create an isolated candidate, rerun these gates, and retain the branch only after they pass. Source Brain modification is a stronger class of work and is governed separately by `source-brain/README.md`; the ordinary bounded improver is not authorized to rewrite the Linux or CPython trees.
-
-A Jenkins worker therefore needs Git, Python 3, a working Docker CLI/daemon, and the source/submodule access required by the Fat build. Jenkins does not duplicate test logic and does not introduce GitHub Actions.
+Automated bounded improvements are not authorized to rewrite `source/linux` or `source/cpython`; changes to those integrated native lineages require the stronger qualification contract in `MANDATE.md` and `ARCHITECTURE.md`.
 
 ## Development / QEMU container
 
@@ -86,29 +51,16 @@ python jetos.py dev --build-only
 python jetos.py dev
 ```
 
-The `dev` target supplies the Fat-mode capabilities required to compile C, link native artifacts, build the Linux kernel, inspect system calls, and emulate x86/ARM targets. The current checkout is bind-mounted at `/jetos` so the Fat environment operates on the exact working tree rather than on a stale image copy.
+The `dev` target supplies Fat-mode capabilities required to compile C, link native artifacts, build the Linux kernel, inspect system calls, and emulate x86/ARM targets. The current checkout is bind-mounted at `/jetos` so the Fat environment operates on the exact working tree.
 
-The two large Source Brain source trees, `source-brain/linux` and `source-brain/cpython`, are deliberately excluded from the ordinary Docker test build context. For full Fat builds they remain in the host checkout and become visible through the bind mount. Initialize them before a full build with normal Git source acquisition.
-
-Fat builds retain source and qualification material. A Skinny runtime image is constructed only after Fat qualification and intentionally omits the complete Linux/CPython source trees and development test suite.
+The large `source/linux` and `source/cpython` trees are deliberately excluded from the ordinary Docker test build context. Full Fat builds use the initialized source in the bind-mounted checkout. Fat builds retain source and qualification material; Skinny images intentionally omit complete development source trees and the development test suite.
 
 ## Dockerfile targets
 
-- `base` — Python 3.14.8 plus the current bootstrap providers for JETOS build/test/emulation capabilities.
-- `test` — lightweight repository copy, OS/capability qualification, and the full repository test suite.
-- `dev` — Fat development environment; the checkout is supplied at runtime through a bind mount.
+- `base` — Python 3.14.8 plus bootstrap providers for build/test/emulation capabilities.
+- `test` — lightweight repository copy, OS/capability qualification, and repository tests.
+- `dev` — Fat development environment with the checkout supplied by bind mount.
 
 ## Qualification boundary
 
-Docker qualification answers: **does the JETOS-owned userspace and Python-facing OS contract behave correctly in a controlled Linux container environment?**
-
-It does not by itself prove:
-
-- the JETOS kernel boots;
-- ARMv7 cross/native artifacts are correct;
-- the HC1 device tree or bootloader is correct;
-- Ethernet/SATA/thermal behavior works on the physical HC1;
-- a Skinny image preserves the complete protected Python surface;
-- a coordinated Source Brain Linux↔CPython change passes the stronger architecture/hardware qualification matrix.
-
-Those remain separate QEMU, Source Brain, and physical-hardware gates.
+Docker qualification proves the JETOS-owned userspace and Python-facing OS contract in a controlled Linux container. It does not by itself prove the JETOS kernel boots, target-specific artifacts are correct, the HC1 device tree/bootloader works, or physical Ethernet/SATA/thermal behavior works. Runtime-affecting source changes must additionally satisfy the integrated kernel + JetLang qualification described in `MANDATE.md` and `ARCHITECTURE.md`.
