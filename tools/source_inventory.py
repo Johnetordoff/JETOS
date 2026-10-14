@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Deterministic recursive source inventory for the JETOS checkout.
 
-The inventory intentionally walks initialized submodule working trees so Linux,
-the CPython-derived JetLang lineage, and source-brain/shared can be measured as
-one source estate. Git/build metadata and the inventory's own generated output
-are excluded; authored source files are not.
+The inventory intentionally walks initialized source working trees so Linux,
+the CPython-derived JetLang lineage, and source/shared can be measured as one
+source estate. Git/build metadata and the inventory's own generated output are
+excluded; authored source files are not.
 """
 from __future__ import annotations
 
@@ -129,11 +129,11 @@ def scan(root: Path) -> dict[str, Any]:
             "binary_files": binary_files,
             "symlinks": symlinks,
             "text_lines": total_text_lines,
-            "source_brain_linux_initialized": (root / "source-brain/linux/Makefile").is_file(),
-            "source_brain_cpython_initialized": (
-                root / "source-brain/cpython/Include/Python.h"
+            "source_linux_initialized": (root / "source/linux/Makefile").is_file(),
+            "source_cpython_initialized": (
+                root / "source/cpython/Include/Python.h"
             ).is_file(),
-            "shared_initialized": (root / "source-brain/shared").is_dir(),
+            "shared_initialized": (root / "source/shared").is_dir(),
         },
         "file_types": [
             {"type": kind, **values}
@@ -167,11 +167,11 @@ def write_outputs(data: dict[str, Any], output_dir: Path) -> None:
         handle.write(f'- Symlinks: {summary["symlinks"]:,}\n')
         handle.write(
             "- Linux source initialized: "
-            f'{summary["source_brain_linux_initialized"]}\n'
+            f'{summary["source_linux_initialized"]}\n'
         )
         handle.write(
             "- CPython-derived source initialized: "
-            f'{summary["source_brain_cpython_initialized"]}\n'
+            f'{summary["source_cpython_initialized"]}\n'
         )
         handle.write(f'- Shared source initialized: {summary["shared_initialized"]}\n')
         handle.write("\n## File types\n\n")
@@ -208,10 +208,10 @@ def main() -> int:
         f'{summary["bytes"]} bytes, '
         f'{summary["text_lines"]} text lines'
     )
-    if not summary["source_brain_linux_initialized"]:
-        print("NOTE: source-brain/linux is not fully initialized; global totals are partial.")
-    if not summary["source_brain_cpython_initialized"]:
-        print("NOTE: source-brain/cpython is not fully initialized; global totals are partial.")
+    if not summary["source_linux_initialized"]:
+        print("NOTE: source/linux is not fully initialized; global totals are partial.")
+    if not summary["source_cpython_initialized"]:
+        print("NOTE: source/cpython is not fully initialized; global totals are partial.")
     if data["unreadable"]:
         print(f'NOTE: {len(data["unreadable"])} paths were unreadable.')
     return 0
