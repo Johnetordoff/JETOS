@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shlex
 import shutil
 import subprocess
 import sys
@@ -14,7 +15,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 CACHE_ROOT = ROOT / ".jetos-cache" / "kernel"
-CACHE_VERSION = 1
+CACHE_VERSION = 2
 
 
 def run(args: list[str], *, cwd: Path | None = None, capture: bool = False) -> subprocess.CompletedProcess[str]:
@@ -46,12 +47,11 @@ def clean_git_head(source: Path) -> str | None:
     return head
 
 
-def command_identity(command: str) -> str:
-    executable = command.split()[0]
+def executable_identity(executable: str) -> dict[str, object]:
     resolved = shutil.which(executable)
     if not resolved:
-        return f"missing:{command}"
-    probes: list[str] = []
+        return {"command": executable, "missing": True}
+    version = "unknown"
     for flag in ("--version", "-v"):
         proc = subprocess.run(
             [resolved, flag],
@@ -61,19 +61,31 @@ def command_identity(command: str) -> str:
         )
         text = (proc.stdout + proc.stderr).strip()
         if text:
-            probes.append(text)
+            version = text
             break
-    stat = Path(resolved).stat()
-    return json.dumps(
-        {
-            "command": command,
-            "resolved": str(Path(resolved).resolve()),
-            "size": stat.st_size,
-            "mtime_ns": stat.st_mtime_ns,
-            "version": probes[0] if probes else "unknown",
-        },
-        sort_keys=True,
-    )
+    path = Path(resolved)
+    stat = path.stat()
+    return {
+        "command": executable,
+        "resolved": str(path.resolve()),
+        "size": stat.st_size,
+        "mtime_ns": stat.st_mtime_ns,
+        "sha256": sha256_file(path.resolve()),
+        "version": version,
+    }
+
+
+def command_identity(command: str) -> list[dict[str, object]]:
+    identities: list[dict[str, object]] = []
+    for token in shlex.split(command):
+        if token.startswith("-") or "=" in token:
+            continue
+        resolved = shutil.which(token)
+        if resolved:
+            identities.append(executable_identity(token))
+    if not identities:
+        identities.append({"command": command, "missing": True})
+    return identities
 
 
 def fingerprint(source: Path, arch: str) -> tuple[str, dict[str, object]] | None:
@@ -82,6 +94,7 @@ def fingerprint(source: Path, arch: str) -> tuple[str, dict[str, object]] | None
         return None
 
     build_script = ROOT / "tools" / "build.py"
+    dockerfile = ROOT / "Dockerfile"
     relevant_env = {
         name: os.environ.get(name, "")
         for name in (
@@ -104,10 +117,14 @@ def fingerprint(source: Path, arch: str) -> tuple[str, dict[str, object]] | None
         "linux_head": head,
         "arch": arch,
         "build_py_sha256": sha256_file(build_script),
+        "dockerfile_sha256": sha256_file(dockerfile),
         "environment": relevant_env,
         "cc_identity": command_identity(os.environ.get("CC", "cc")),
-        "ld_identity": command_identity(os.environ.get("LD", "ld")),
-        "make_identity": command_identity("make"),
+        "hostcc_identity": command_identity(os.environ.get("HOSTCC", os.environ.get("CC", "cc"))),
+        "tool_identities": {
+            name: executable_identity(name)
+            for name in ("ld", "as", "ar", "objcopy", "make", "bison", "flex", "perl", "python3")
+        },
     }
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     key = hashlib.sha256(encoded).hexdigest()
@@ -156,7 +173,6 @@ def store(cache_dir: Path, image: Path, payload: dict[str, object]) -> None:
         if cache_dir.exists():
             shutil.rmtree(cache_dir)
         os.replace(temp, cache_dir)
-        # TemporaryDirectory must not try to remove the path after os.replace.
         Path(temporary).mkdir(exist_ok=True)
     print(f"JETOS kernel cache: STORED {cache_dir.name}", flush=True)
 
