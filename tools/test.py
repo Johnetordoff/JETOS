@@ -14,9 +14,13 @@ PORT = ROOT / "ports" / "gcc" / "ordered_hash_map_c"
 C_COMPILER = os.environ.get("CC", "cc")
 
 
-def run(*args: str, env: dict[str, str] | None = None) -> None:
+def run(
+    *args: str,
+    env: dict[str, str] | None = None,
+    cwd: Path | None = None,
+) -> None:
     print("+", " ".join(args), flush=True)
-    subprocess.run(args, cwd=ROOT, check=True, env=env)
+    subprocess.run(args, cwd=cwd or ROOT, check=True, env=env)
 
 
 def assert_no_github_actions() -> None:
@@ -83,13 +87,19 @@ def main() -> int:
     run(sys.executable, "tools/test_kernel_codesign_baseline.py")
     run(sys.executable, "tools/test_docker_contract.py")
     run(sys.executable, "tools/test_work_server.py")
+    run(sys.executable, "tools/test_behind_a_log.py")
     env = os.environ.copy()
     env["PYTHONPATH"] = str(ROOT / "src")
     run(
         sys.executable,
         "-c",
-        "from jetos.hardware import snapshot; s=snapshot(); assert s['machine']; print('hardware smoke:', s['machine'])",
+        "import jetos; from jetos.hardware import snapshot; "
+        "assert jetos.__file__; "
+        "assert '/src/jetos/' in jetos.__file__.replace('\\\\', '/'); "
+        "s=snapshot(); assert s['machine']; "
+        "print('hardware smoke:', s['machine'], 'package:', jetos.__file__)",
         env=env,
+        cwd=ROOT / "src",
     )
     build_and_run("ordered_hash_map_test", ["-O2"])
     build_and_run(
