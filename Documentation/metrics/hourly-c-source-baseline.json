@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "metric_scope": "authored-c-runtime-source",
+  "original_baseline": {
+    "commit": "c68d33a856e66f09a792c6c456ae134647642161",
+    "bytes": 10138,
+    "code_loc": 311
+  },
+  "paths": [
+    "ports/gcc/ordered_hash_map_c/ordered_hash_map.c",
+    "ports/gcc/ordered_hash_map_c/ordered_hash_map.h"
+  ],
+  "test_paths": [
+    "ports/gcc/ordered_hash_map_c/test_ordered_hash_map.c"
+  ],
+  "loc_method": "Count a physical line as code LOC when non-comment C tokens remain after stripping // and /* */ comments while preserving string and character literals; track comment-only and blank lines separately.",
+  "excluded_from_primary_metric": [
+    "tests",
+    "source-brain/linux",
+    "source-brain/cpython",
+    "generated code",
+    "build products",
+    "temporary files"
+  ],
+  "scope_note": "This first trustworthy baseline covers authored C source present on main. Any later scope expansion must preserve this baseline and report both the original comparable scope and the expanded scope rather than resetting history."
+}
