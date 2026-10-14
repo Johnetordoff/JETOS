@@ -11,13 +11,11 @@ import source_inventory
 def main() -> int:
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)
-        (root / "source-brain/shared").mkdir(parents=True)
+        (root / "source/shared").mkdir(parents=True)
         (root / "alpha.c").write_text("one\ntwo\n", encoding="utf-8")
         (root / "Makefile").write_text("all:\n\techo ok\n", encoding="utf-8")
         (root / "binary.bin").write_bytes(b"\x00abc")
 
-        # Generated accounting/build material must not recursively inflate the
-        # source measurement on later runs.
         (root / "Temporary Bullshit/output").mkdir(parents=True)
         (root / "Temporary Bullshit/output/source-tree.txt").write_text(
             "generated\n", encoding="utf-8"
