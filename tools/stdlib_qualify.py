@@ -19,12 +19,14 @@ import subprocess
 import sys
 from typing import Any
 
-NON_LINUX = frozenset(
+LINUX_INAPPLICABLE = frozenset(
     {
+        "_ios_support",
         "_msi",
         "_overlapped",
         "_scproxy",
         "_winapi",
+        "_wmi",
         "msvcrt",
         "nt",
         "winreg",
@@ -51,7 +53,12 @@ items = []
 def signature(obj):
     try:
         return str(inspect.signature(obj))
-    except (TypeError, ValueError):
+    except Exception:
+        # Signature discovery is advisory inventory metadata. Some stdlib
+        # callables expose annotations or descriptors whose evaluation raises
+        # NameError/AttributeError on otherwise healthy modules. A missing
+        # signature must not turn a successful import into a qualification
+        # failure.
         return None
 
 def add(path, obj, kind):
@@ -202,6 +209,13 @@ def run_full_suite() -> tuple[bool, str]:
     return result.returncode == 0, f"exit {result.returncode}"
 
 
+def applicable_modules(requested: list[str] | None) -> list[str]:
+    modules = set(requested or sys.stdlib_module_names)
+    if sys.platform.startswith("linux"):
+        modules -= LINUX_INAPPLICABLE
+    return sorted(modules)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Qualify the JETOS/Python stdlib before reducing the OS substrate"
@@ -222,7 +236,7 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    modules = sorted(set(args.modules or sys.stdlib_module_names) - NON_LINUX)
+    modules = applicable_modules(args.modules)
     failures: list[str] = []
     manifest: dict[str, Any] = {
         "implementation": sys.implementation.name,
