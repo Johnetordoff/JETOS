@@ -46,6 +46,14 @@ def main() -> int:
     assert 'ensure_dev_sources()' in entrypoint
     assert 'sys.stdin.isatty() and sys.stdout.isatty()' in entrypoint
 
+    dev = (ROOT / "tools/dev.py").read_text(encoding="utf-8")
+    assert 'BUILD_REVISION = BUILD / ".jetos-build-revision"' in dev
+    assert '["git", "rev-parse", "HEAD"]' in dev
+    assert 'def prepare_revision_build()' in dev
+    assert 'shutil.rmtree(BUILD)' in dev
+    assert 'revision = prepare_revision_build()' in dev
+    assert 'print(f"  JetOS revision: {revision}")' in dev
+
     qualifier = (ROOT / "tools/container_os_qualify.py").read_text(encoding="utf-8")
     assert '"c_compiler": os.environ.get("CC", "cc")' in qualifier
     assert '"kernel_model": "shared host Linux kernel"' in qualifier

@@ -13,6 +13,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT / ".build"
+BUILD_REVISION = BUILD / ".jetos-build-revision"
 SOURCE_BRAIN = ROOT / "source-brain"
 SOURCE_BRAIN_LINUX = SOURCE_BRAIN / "linux"
 SOURCE_BRAIN_CPYTHON = SOURCE_BRAIN / "cpython"
@@ -34,6 +35,28 @@ CPYTHON_COMMIT = "8e6e75d9102e39bed2a2b279203a396741180f12"
 def run(args: list[str], *, cwd: Path | None = None, capture: bool = False) -> subprocess.CompletedProcess[str]:
     print("+", " ".join(args), flush=True)
     return subprocess.run(args, cwd=cwd or ROOT, check=True, text=True, capture_output=capture)
+
+
+def current_revision() -> str:
+    return run(["git", "rev-parse", "HEAD"], capture=True).stdout.strip()
+
+
+def prepare_revision_build() -> str:
+    """Ensure cached artifacts belong to the exact current JetOS revision."""
+    revision = current_revision()
+    recorded = BUILD_REVISION.read_text(encoding="utf-8").strip() if BUILD_REVISION.is_file() else None
+    if recorded == revision:
+        return revision
+
+    if BUILD.exists():
+        print(
+            "JETOS source revision changed; discarding stale JetLang/kernel/Fat artifacts",
+            flush=True,
+        )
+        shutil.rmtree(BUILD)
+    BUILD.mkdir(parents=True, exist_ok=True)
+    BUILD_REVISION.write_text(revision + "\n", encoding="utf-8")
+    return revision
 
 
 def arch() -> str:
@@ -158,6 +181,7 @@ def tests() -> None:
 def build_all() -> tuple[Path, Path, Path]:
     if platform.system() != "Linux":
         raise SystemExit("native JETOS development currently requires Linux; use `python jetos.py dev` to run the Linux development environment in Docker")
+    revision = prepare_revision_build()
     tests()
     prepare_sources()
     runtime, stdlib = build_language()
@@ -166,6 +190,7 @@ def build_all() -> tuple[Path, Path, Path]:
     kernel = build_kernel(target_arch)
     build_initramfs(runtime, stdlib)
     print("\nJETOS Fat development artifacts")
+    print(f"  JetOS revision: {revision}")
     print(f"  architecture: {target_arch}")
     print(f"  language:     JetLang (CPython-derived, base {CPYTHON_VERSION})")
     print(f"  runtime:      {runtime}")
@@ -205,6 +230,13 @@ def status() -> None:
     print(f"JetLang CPython {CPYTHON_VERSION} ancestor: {CPYTHON_COMMIT}")
     source_status("source-brain/linux", SOURCE_BRAIN_LINUX, LINUX_COMMIT, "Makefile")
     source_status("source-brain/cpython", SOURCE_BRAIN_CPYTHON, CPYTHON_COMMIT, "Python/sysmodule.c")
+    try:
+        current = current_revision()
+    except subprocess.CalledProcessError:
+        current = "unavailable"
+    recorded = BUILD_REVISION.read_text(encoding="utf-8").strip() if BUILD_REVISION.is_file() else "none"
+    print(f"current JetOS revision: {current}")
+    print(f"cached build revision: {recorded}")
     print(f"target architecture: {arch()}")
     for path in (LANGUAGE_SOURCE, LANGUAGE_BUILD, LANGUAGE_PREFIX, STDLIB_MANIFEST, LINUX_SOURCE, ROOTFS, INITRAMFS):
         print(f"{path.relative_to(ROOT)}: {'present' if path.exists() else 'missing'}")
