@@ -226,12 +226,14 @@ def main() -> int:
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    sub.add_parser("doctor", help="check host development prerequisites")
+    doctor = sub.add_parser("doctor", help="check host development prerequisites")
+    doctor.add_argument("--native", action="store_true", help="check the native Linux build/QEMU path without requiring Docker")
 
     setup = sub.add_parser("setup", help="plan or install host prerequisites")
     setup.add_argument("--plan", action="store_true")
     setup.add_argument("--install", action="store_true")
     setup.add_argument("--yes", action="store_true")
+    setup.add_argument("--native", action="store_true", help="install native Linux build/QEMU prerequisites without Docker")
 
     sub.add_parser("test", help="run repository tests on the current host")
     sub.add_parser(
@@ -248,6 +250,11 @@ def main() -> int:
         "--native",
         action="store_true",
         help="run build/QEMU directly on a Linux development host instead of Docker",
+    )
+    dev.add_argument(
+        "--bootstrap",
+        action="store_true",
+        help="install missing native Linux build prerequisites before a native build",
     )
 
     work_server = sub.add_parser(
@@ -269,12 +276,17 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.command == "doctor":
-        python_tool("host.py", ["doctor"])
+        forwarded = ["doctor"]
+        if args.native:
+            forwarded.append("--native")
+        python_tool("host.py", forwarded)
     elif args.command == "setup":
         mode = "install" if args.install else "plan"
         forwarded = [mode]
         if args.yes:
             forwarded.append("--yes")
+        if args.native:
+            forwarded.append("--native")
         python_tool("host.py", forwarded)
     elif args.command == "test":
         tests()
@@ -283,6 +295,17 @@ def main() -> int:
     elif args.command == "dev":
         ensure_dev_sources()
         if args.native:
+            if args.bootstrap:
+                python_tool("host.py", ["install", "--yes", "--native"])
+            doctor = run(
+                [sys.executable, str(ROOT / "tools" / "host.py"), "doctor", "--native"],
+                check=False,
+            )
+            if doctor.returncode != 0:
+                raise SystemExit(
+                    "Native JETOS build prerequisites are incomplete. "
+                    "Run `python3 jetos.py dev --native --bootstrap` to install supported dependencies."
+                )
             python_tool("dev.py", ["build" if args.build_only else "run"])
         else:
             docker_dev(args.build_only)
