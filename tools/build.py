@@ -519,6 +519,31 @@ def kernel_build(
     return image
 
 
+MIB = 1024 * 1024
+VM_MEMORY_HEADROOM = 512 * MIB
+
+
+def initramfs_vm_memory(initramfs: Path) -> str:
+    """Size guest RAM so the kernel can unpack the initramfs into rootfs.
+
+    The compressed archive and its unpacked contents are both resident while
+    the kernel unpacks it, and the unpacked rootfs stays in RAM afterwards.
+    A Fat image carries full source trees, so a fixed small default makes the
+    kernel fail with "Initramfs unpacking failed: write error" and panic.
+    The initramfs rootfs is tmpfs, which defaults to half of RAM, so the
+    unpacked size counts twice. The gzip trailer records the uncompressed size
+    modulo 2**32.
+    """
+    compressed = initramfs.stat().st_size
+    with initramfs.open("rb") as stream:
+        stream.seek(-4, os.SEEK_END)
+        unpacked = int.from_bytes(stream.read(4), "little")
+    while unpacked < compressed:
+        unpacked += 1 << 32
+    needed = compressed + 2 * unpacked + VM_MEMORY_HEADROOM
+    return f"{-(-needed // (256 * MIB)) * 256}M"
+
+
 def qemu_boot(
     kernel: Path,
     initramfs: Path,
@@ -526,6 +551,9 @@ def qemu_boot(
     target_arch: str,
 ) -> None:
     target_arch = normalize_arch(target_arch)
+    if memory == "auto":
+        memory = initramfs_vm_memory(initramfs)
+        print(f"JETOS VM memory: {memory} (sized from {initramfs})", flush=True)
     if target_arch == "x86_64":
         executable = "qemu-system-x86_64"
         console = "ttyS0"
@@ -772,7 +800,8 @@ def main() -> int:
     )
     vm.add_argument(
         "--memory",
-        default="512M",
+        default="auto",
+        help="guest RAM, e.g. 4G; 'auto' sizes it from the initramfs",
     )
 
     args = parser.parse_args()
