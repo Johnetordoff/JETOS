@@ -10,7 +10,23 @@ import subprocess
 import sys
 
 
-LINUX_NATIVE_COMMANDS = (\n    "git", "gcc", "make", "ld", "as", "ar", "objcopy",\n    "bc", "bison", "flex", "pahole", "pkg-config",\n)\n\n\ndef command_exists(name: str) -> bool:
+LINUX_NATIVE_COMMANDS = (
+    "git",
+    "gcc",
+    "make",
+    "ld",
+    "as",
+    "ar",
+    "objcopy",
+    "bc",
+    "bison",
+    "flex",
+    "pahole",
+    "pkg-config",
+)
+
+
+def command_exists(name: str) -> bool:
     return shutil.which(name) is not None
 
 
@@ -42,23 +58,27 @@ def plan(*, include_docker: bool = True) -> list[list[str]]:
                 "Homebrew is required for the automated macOS setup. "
                 "Install Homebrew from its official site, then rerun this command."
             )
-        return [
-            ["brew", "install", "git", "qemu"],
-            ["brew", "install", "--cask", "docker"],
-        ]
+        commands = [["brew", "install", "git", "qemu"]]
+        if include_docker:
+            commands.append(["brew", "install", "--cask", "docker"])
+        return commands
 
     if host == "windows":
         if not command_exists("winget"):
             raise SystemExit("winget is required for the automated Windows setup")
-        return [
-            ["winget", "install", "--id", "Git.Git", "-e"],
-            ["winget", "install", "--id", "Docker.DockerDesktop", "-e"],
-        ]
+        commands = [["winget", "install", "--id", "Git.Git", "-e"]]
+        if include_docker:
+            commands.append(["winget", "install", "--id", "Docker.DockerDesktop", "-e"])
+        return commands
 
     if host != "linux":
         raise SystemExit(f"unsupported development host: {platform.system()}")
 
     manager = linux_manager()
+    docker_packages: list[str] = []
+    if include_docker:
+        docker_packages = ["docker.io"] if manager == "apt-get" else ["docker"]
+
     if manager == "apt-get":
         packages = [
             "git", *docker_packages, "qemu-system-x86", "qemu-system-arm",
@@ -82,7 +102,7 @@ def plan(*, include_docker: bool = True) -> list[list[str]]:
         return [prefix_admin(["dnf", "install", "-y", *packages])]
     if manager == "pacman":
         packages = [
-            "git", "docker", "qemu-system-x86", "qemu-system-aarch64",
+            "git", *docker_packages, "qemu-system-x86", "qemu-system-aarch64",
             "base-devel", "bc", "bison", "flex", "openssl", "libelf", "pahole",
             "pkgconf", "libffi", "zlib", "bzip2", "readline", "sqlite", "xz",
             "util-linux",
@@ -105,6 +125,7 @@ def doctor(*, native: bool = False) -> int:
     machine = platform.machine()
     print(f"host: {host} {machine}")
     print(f"python: {sys.version.split()[0]} ({sys.executable})")
+
     if native:
         if host != "Linux":
             print("native development mode requires Linux")
@@ -119,23 +140,26 @@ def doctor(*, native: bool = False) -> int:
     else:
         commands = ["git", "docker"]
         print("development mode: Docker-hosted Linux builder + QEMU guest")
+
     missing = []
     for command in commands:
         found = shutil.which(command)
         print(f"{command}: {found or 'MISSING'}")
         if not found:
             missing.append(command)
+
     if missing:
         print("missing prerequisites:", ", ".join(missing))
         if native and host == "Linux":
             print("remediation: python3 jetos.py setup --install --yes --native")
         return 1
+
     print("JETOS host prerequisites: PASS")
     return 0
 
 
-def install(yes: bool) -> None:
-    commands = plan()
+def install(yes: bool, *, include_docker: bool = True) -> None:
+    commands = plan(include_docker=include_docker)
     for command in commands:
         print("+", " ".join(command))
     if not yes:
@@ -147,25 +171,31 @@ def install(yes: bool) -> None:
             prefix_admin(["systemctl", "enable", "--now", "docker"]),
             check=False,
         )
-    print(
-        "Host prerequisites installed. Docker Desktop may still need to be "
-        "opened once on macOS/Windows."
-    )
+    if include_docker:
+        print(
+            "Host prerequisites installed. Docker Desktop may still need to be "
+            "opened once on macOS/Windows."
+        )
+    else:
+        print("Native Linux build prerequisites installed.")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="JETOS host setup")
     sub = parser.add_subparsers(dest="command", required=True)
-    sub.add_parser("doctor")
-    sub.add_parser("plan")
+    doctor_parser = sub.add_parser("doctor")
+    doctor_parser.add_argument("--native", action="store_true")
+    plan_parser = sub.add_parser("plan")
+    plan_parser.add_argument("--native", action="store_true")
     installer = sub.add_parser("install")
     installer.add_argument("--yes", action="store_true")
+    installer.add_argument("--native", action="store_true")
     args = parser.parse_args()
 
     if args.command == "doctor":
-        return doctor()
+        return doctor(native=args.native)
     if args.command == "plan":
-        for command in plan():
+        for command in plan(include_docker=not args.native):
             print(" ".join(command))
         return 0
     if args.command == "install":
