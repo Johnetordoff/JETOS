@@ -5,12 +5,15 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 import subprocess
+import time
 from types import ModuleType
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 INVENTORY_TOOL = ROOT / "tools/source_inventory.py"
 SOURCE_TREES = ("source/linux", "source/cpython")
+SUBMODULE_ATTEMPTS = 3
+SUBMODULE_RETRY_DELAYS = (2, 5)
 
 
 def load_inventory() -> ModuleType:
@@ -22,14 +25,47 @@ def load_inventory() -> ModuleType:
     return module
 
 
+def _update_source_submodules() -> None:
+    """Initialize pinned source submodules, retrying transient Git/network failures."""
+    command = [
+        "git",
+        "submodule",
+        "update",
+        "--init",
+        "--recursive",
+        "--jobs",
+        "2",
+        *SOURCE_TREES,
+    ]
+    last_error: subprocess.CalledProcessError | None = None
+    for attempt in range(1, SUBMODULE_ATTEMPTS + 1):
+        try:
+            subprocess.run(command, cwd=ROOT, check=True)
+            return
+        except subprocess.CalledProcessError as error:
+            last_error = error
+            if attempt == SUBMODULE_ATTEMPTS:
+                break
+            delay = SUBMODULE_RETRY_DELAYS[attempt - 1]
+            print(
+                f"source submodule initialization failed on attempt "
+                f"{attempt}/{SUBMODULE_ATTEMPTS}; retrying in {delay}s..."
+            )
+            time.sleep(delay)
+
+    assert last_error is not None
+    raise SystemExit(
+        "Could not initialize the pinned JETOS source submodules after "
+        f"{SUBMODULE_ATTEMPTS} attempts. This may be a transient Git/DNS/network "
+        "failure; use the GitHub-hosted source-baseline workflow as the independent "
+        "fallback execution path."
+    ) from last_error
+
+
 def prepare_sources() -> None:
     """Ensure the native source trees are present without reviving nested Git."""
     if (ROOT / ".gitmodules").is_file():
-        subprocess.run(
-            ["git", "submodule", "update", "--init", "--recursive", *SOURCE_TREES],
-            cwd=ROOT,
-            check=True,
-        )
+        _update_source_submodules()
         return
 
     required = {
