@@ -1,6 +1,6 @@
 name: JetOS complete source baseline
 
-on:
+"on":
   workflow_dispatch:
   schedule:
     - cron: "17 * * * *"
