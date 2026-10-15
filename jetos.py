@@ -216,12 +216,8 @@ def print_all_text() -> None:
             text = path.read_text(encoding="utf-8")
         except UnicodeDecodeError:
             continue
-        print(f"
-===== {relative} =====
-")
-        print(text, end="" if text.endswith("
-") else "
-")
+        print(f"\n===== {relative} =====\n")
+        print(text, end="" if text.endswith("\n") else "\n")
 
 
 def main() -> int:
