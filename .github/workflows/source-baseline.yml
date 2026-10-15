@@ -1,0 +1,76 @@
+name: JetOS complete source baseline
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 * * * *"
+  push:
+    branches:
+      - main
+    paths:
+      - ".gitmodules"
+      - "source/linux"
+      - "source/cpython"
+      - "source/shared/**"
+      - "tools/source_inventory.py"
+      - "Temporary Bullshit/**"
+      - ".github/workflows/source-baseline.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jetos-source-baseline
+  cancel-in-progress: true
+
+jobs:
+  source-baseline:
+    name: Complete source inventory
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out JetOS without source submodules
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Prepare pinned source trees with retry support
+        run: python3 "Temporary Bullshit/prepare_sources.py"
+
+      - name: Generate complete source inventory
+        run: python3 "Temporary Bullshit/full_report.py"
+
+      - name: Record reproducible source revisions
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p "Temporary Bullshit/output"
+          {
+            echo "jetos_main_sha=$(git rev-parse HEAD)"
+            if git -C source/linux rev-parse HEAD >/dev/null 2>&1; then
+              echo "linux_sha=$(git -C source/linux rev-parse HEAD)"
+            else
+              echo "linux_sha=UNAVAILABLE"
+            fi
+            if git -C source/cpython rev-parse HEAD >/dev/null 2>&1; then
+              echo "cpython_sha=$(git -C source/cpython rev-parse HEAD)"
+            else
+              echo "cpython_sha=UNAVAILABLE"
+            fi
+          } | tee "Temporary Bullshit/output/source-revisions.txt"
+
+      - name: Upload complete-baseline artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jetos-source-baseline-${{ github.sha }}
+          if-no-files-found: warn
+          retention-days: 30
+          path: |
+            Temporary Bullshit/output/source-inventory.json
+            Temporary Bullshit/output/source-inventory.md
+            Temporary Bullshit/output/source-tree.txt
+            Temporary Bullshit/output/source-hierarchy-depth-*.txt
+            Temporary Bullshit/output/source-revisions.txt
