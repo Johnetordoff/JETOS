@@ -80,6 +80,23 @@ def main() -> int:
         check("console=ttyAMA0 rdinit=/init panic=-1" in captured[-1], "arm64 serial console")
         check("virt" in captured[-1], "arm64 QEMU virt machine")
         checks += 5
+
+        initramfs = ROOT / ".build" / "test-architectures-initramfs.cpio.gz"
+        initramfs.parent.mkdir(exist_ok=True)
+        try:
+            # 300 MiB of unpacked data compresses to a tiny archive; the guest
+            # must still hold the unpacked bytes twice (tmpfs half-RAM cap) plus
+            # kernel headroom.
+            with build.gzip.open(initramfs, "wb") as stream:
+                chunk = bytes(build.MIB)
+                for _ in range(300):
+                    stream.write(chunk)
+            check(build.initramfs_vm_memory(initramfs) == "1280M", "initramfs-sized VM memory")
+            build.qemu_boot(Path("kernel"), initramfs, "auto", "x86_64")
+            check(captured[-1][captured[-1].index("-m") + 1] == "1280M", "auto VM memory passed to QEMU")
+            checks += 2
+        finally:
+            initramfs.unlink(missing_ok=True)
     finally:
         build.shutil.which = original_which
         build.os.execvp = original_execvp

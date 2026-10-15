@@ -24,7 +24,8 @@ def main() -> int:
     assert "qemu-system-x86" in dockerfile
     assert "qemu-system-aarch64" in dockerfile
     assert "strace" in dockerfile
-    assert "ENV CC=cc" in dockerfile
+    assert 'ENV CC="ccache cc"' in dockerfile
+    assert "ENV CCACHE_COMPILERCHECK=content" in dockerfile
     assert "command -v qemu-system-aarch64" in dockerfile
     assert "command -v cc" in dockerfile
     assert "command -v make" in dockerfile

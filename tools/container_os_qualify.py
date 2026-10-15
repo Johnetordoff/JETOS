@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 import platform
 import selectors
+import shlex
 import shutil
 import socket
 import subprocess
@@ -40,9 +41,18 @@ TOOL_CAPABILITIES = {
 
 
 def command_identity(command: str) -> dict[str, str]:
-    path = shutil.which(command)
-    if path is None:
+    # CC may be a command line such as "ccache cc"; every executable in it must
+    # exist, and the identity reported is that of the final (real) compiler.
+    executables = [
+        token for token in shlex.split(command)
+        if not token.startswith("-") and "=" not in token
+    ]
+    if not executables:
         raise AssertionError(f"required capability executable not found: {command}")
+    for executable in executables:
+        path = shutil.which(executable)
+        if path is None:
+            raise AssertionError(f"required capability executable not found: {executable}")
     result = subprocess.run(
         [path, "--version"],
         text=True,
