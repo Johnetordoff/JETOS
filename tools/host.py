@@ -10,7 +10,7 @@ import subprocess
 import sys
 
 
-def command_exists(name: str) -> bool:
+LINUX_NATIVE_COMMANDS = (\n    "git", "gcc", "make", "ld", "as", "ar", "objcopy",\n    "bc", "bison", "flex", "pahole", "pkg-config",\n)\n\n\ndef command_exists(name: str) -> bool:
     return shutil.which(name) is not None
 
 
@@ -34,7 +34,7 @@ def prefix_admin(command: list[str]) -> list[str]:
     return [sudo, *command]
 
 
-def plan() -> list[list[str]]:
+def plan(*, include_docker: bool = True) -> list[list[str]]:
     host = host_name()
     if host == "darwin":
         if not command_exists("brew"):
@@ -61,7 +61,7 @@ def plan() -> list[list[str]]:
     manager = linux_manager()
     if manager == "apt-get":
         packages = [
-            "git", "docker.io", "qemu-system-x86", "qemu-system-arm",
+            "git", *docker_packages, "qemu-system-x86", "qemu-system-arm",
             "gcc", "make", "binutils", "libc6-dev", "bc", "bison", "flex",
             "libssl-dev", "libelf-dev", "dwarves", "pkg-config", "libffi-dev",
             "zlib1g-dev", "libbz2-dev", "libreadline-dev", "libsqlite3-dev",
@@ -73,7 +73,7 @@ def plan() -> list[list[str]]:
         ]
     if manager == "dnf":
         packages = [
-            "git", "docker", "qemu-system-x86", "qemu-system-aarch64",
+            "git", *docker_packages, "qemu-system-x86", "qemu-system-aarch64",
             "gcc", "make", "binutils", "bc", "bison", "flex", "openssl-devel",
             "elfutils-libelf-devel", "dwarves", "pkgconf-pkg-config", "libffi-devel",
             "zlib-devel", "bzip2-devel", "readline-devel", "sqlite-devel",
@@ -90,7 +90,7 @@ def plan() -> list[list[str]]:
         return [prefix_admin(["pacman", "-S", "--needed", *packages])]
     if manager == "zypper":
         packages = [
-            "git", "docker", "qemu-x86", "qemu-arm", "gcc", "make", "binutils",
+            "git", *docker_packages, "qemu-x86", "qemu-arm", "gcc", "make", "binutils",
             "bc", "bison", "flex", "libopenssl-devel", "libelf-devel", "dwarves",
             "pkg-config", "libffi-devel", "zlib-devel", "libbz2-devel",
             "readline-devel", "sqlite3-devel", "xz-devel", "libuuid-devel",
@@ -100,31 +100,35 @@ def plan() -> list[list[str]]:
     raise SystemExit("no supported Linux package manager found")
 
 
-def doctor() -> int:
+def doctor(*, native: bool = False) -> int:
     host = platform.system()
     machine = platform.machine()
     print(f"host: {host} {machine}")
     print(f"python: {sys.version.split()[0]} ({sys.executable})")
-    commands = ["git", "docker"]
-    if host == "Linux":
-        commands.extend(["gcc", "make"])
+    if native:
+        if host != "Linux":
+            print("native development mode requires Linux")
+            return 1
+        commands = list(LINUX_NATIVE_COMMANDS)
         commands.append(
             "qemu-system-aarch64"
             if machine.lower() in {"aarch64", "arm64"}
             else "qemu-system-x86_64"
         )
+        print("development mode: native Linux builder + QEMU guest")
+    else:
+        commands = ["git", "docker"]
+        print("development mode: Docker-hosted Linux builder + QEMU guest")
     missing = []
     for command in commands:
         found = shutil.which(command)
         print(f"{command}: {found or 'MISSING'}")
         if not found:
             missing.append(command)
-    if host in {"Darwin", "Windows"}:
-        print("development mode: Docker-hosted Linux builder + QEMU guest")
-    else:
-        print("development mode: Docker or native Linux builder + QEMU guest")
     if missing:
         print("missing prerequisites:", ", ".join(missing))
+        if native and host == "Linux":
+            print("remediation: python3 jetos.py setup --install --yes --native")
         return 1
     print("JETOS host prerequisites: PASS")
     return 0
@@ -138,7 +142,7 @@ def install(yes: bool) -> None:
         raise SystemExit("rerun with `--yes` to execute this installation plan")
     for command in commands:
         subprocess.run(command, check=True)
-    if host_name() == "linux" and command_exists("systemctl"):
+    if include_docker and host_name() == "linux" and command_exists("systemctl"):
         subprocess.run(
             prefix_admin(["systemctl", "enable", "--now", "docker"]),
             check=False,
@@ -165,7 +169,7 @@ def main() -> int:
             print(" ".join(command))
         return 0
     if args.command == "install":
-        install(args.yes)
+        install(args.yes, include_docker=not args.native)
         return 0
     return 0
 
