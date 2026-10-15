@@ -261,22 +261,34 @@ def cpio_entry(
     return result
 
 
+# Character devices PID 1 needs before it can mount devtmpfs. JetLang is
+# PID 1 and seeds hash randomization at startup: early in boot getrandom()
+# can report EAGAIN, and CPython then requires /dev/urandom or aborts.
+EARLY_DEVICE_NODES = (
+    ("dev/console", 0o600, 5, 1),
+    ("dev/null", 0o666, 1, 3),
+    ("dev/random", 0o666, 1, 8),
+    ("dev/urandom", 0o666, 1, 9),
+)
+
+
 def build_initramfs(
     rootfs: Path,
     output: Path,
 ) -> None:
     pieces: list[bytes] = []
     ino = 1
-    pieces.append(
-        cpio_entry(
-            "dev/console",
-            stat.S_IFCHR | 0o600,
-            rdevmajor=5,
-            rdevminor=1,
-            ino=ino,
+    for name, permissions, major, minor in EARLY_DEVICE_NODES:
+        pieces.append(
+            cpio_entry(
+                name,
+                stat.S_IFCHR | permissions,
+                rdevmajor=major,
+                rdevminor=minor,
+                ino=ino,
+            )
         )
-    )
-    ino += 1
+        ino += 1
 
     for path in sorted(rootfs.rglob("*")):
         rel = path.relative_to(rootfs).as_posix()

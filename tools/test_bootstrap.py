@@ -87,6 +87,18 @@ def main() -> int:
     checks += 3
 
     with tempfile.TemporaryDirectory() as temp:
+        output = Path(temp) / "early.cpio.gz"
+        (Path(temp) / "rootfs").mkdir()
+        build.build_initramfs(Path(temp) / "rootfs", output)
+        archive = build.gzip.decompress(output.read_bytes())
+        for name in ("dev/console", "dev/null", "dev/random", "dev/urandom"):
+            check(
+                name.encode("utf-8") + b"\0" in archive,
+                f"early device node {name}",
+            )
+        checks += 4
+
+    with tempfile.TemporaryDirectory() as temp:
         rootfs = Path(temp)
         build.copy_jetos(rootfs)
         init = (
