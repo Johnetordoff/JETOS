@@ -25,7 +25,8 @@ def assert_contract() -> None:
     required_dockerfile = (
         f"ARG PYTHON_IMAGE={PYTHON_IMAGE}",
         "FROM ${PYTHON_IMAGE} AS base",
-        "ENV CC=cc",
+        "ENV CCACHE_COMPILERCHECK=content",
+        'ENV CC="ccache cc"',
         "FROM base AS test",
         "RUN python tools/container_os_qualify.py --phase build --require-toolchain",
         "RUN python jetos.py test",

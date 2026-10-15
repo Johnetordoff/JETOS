@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import shlex
 import shutil
 import subprocess
 import sys
@@ -11,6 +12,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT / ".build"
 PORT = ROOT / "source" / "ports" / "gcc" / "ordered_hash_map_c"
+# CC is a command line (for example "ccache cc"), as Make and Kbuild treat it.
 C_COMPILER = os.environ.get("CC", "cc")
 
 
@@ -36,13 +38,14 @@ def assert_no_github_actions() -> None:
         )
 
 
-def require_c_compiler() -> str:
-    compiler = shutil.which(C_COMPILER)
+def require_c_compiler() -> list[str]:
+    command = shlex.split(C_COMPILER)
+    compiler = shutil.which(command[0]) if command else None
     if compiler is None:
         raise AssertionError(
             f"JETOS requires a C compiler capability; CC={C_COMPILER!r} was not found"
         )
-    return compiler
+    return [compiler, *command[1:]]
 
 
 def build_and_run(name: str, extra_flags: list[str]) -> None:
@@ -50,7 +53,7 @@ def build_and_run(name: str, extra_flags: list[str]) -> None:
     output = BUILD / name
     compiler = require_c_compiler()
     run(
-        compiler,
+        *compiler,
         "-std=c11",
         "-Wall",
         "-Wextra",
