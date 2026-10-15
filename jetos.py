@@ -226,12 +226,12 @@ def main() -> int:
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    sub.add_parser("doctor", help="check host development prerequisites")
+    doctor = sub.add_parser("doctor", help="check host development prerequisites")\n    doctor.add_argument("--native", action="store_true", help="check the native Linux build/QEMU path without requiring Docker")
 
     setup = sub.add_parser("setup", help="plan or install host prerequisites")
     setup.add_argument("--plan", action="store_true")
     setup.add_argument("--install", action="store_true")
-    setup.add_argument("--yes", action="store_true")
+    setup.add_argument("--yes", action="store_true")\n    setup.add_argument("--native", action="store_true", help="install native Linux build/QEMU prerequisites without Docker")
 
     sub.add_parser("test", help="run repository tests on the current host")
     sub.add_parser(
