@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """JETOS Docker/Fat-mode contract checks.
 
-JETOS uses the Docker CLI directly from Python. There is intentionally no
-Docker SDK dependency and absolutely no GitHub Actions dependency. Jenkins may
-schedule the repository-owned Work Server cycle, but does not own test logic.
+JETOS uses the Docker CLI directly from Python. The host supplies Docker and
+Git; compiler, linker, kernel-build, QEMU, and JetLang build dependencies live
+inside the repository-owned Docker image. There is intentionally no Docker SDK
+or GitHub Actions dependency.
 """
 from __future__ import annotations
 
@@ -25,18 +26,22 @@ def assert_contract() -> None:
     required_dockerfile = (
         f"ARG PYTHON_IMAGE={PYTHON_IMAGE}",
         "FROM ${PYTHON_IMAGE} AS base",
-        "ENV CCACHE_COMPILERCHECK=content",
+        "binutils",
+        "qemu-system-x86",
+        "qemu-system-arm",
         'ENV CC="ccache cc"',
         "FROM base AS test",
         "RUN python tools/container_os_qualify.py --phase build --require-toolchain",
         "RUN python jetos.py test",
         'CMD ["python", "tools/container_os_qualify.py", "--phase", "runtime", "--require-toolchain"]',
         "FROM base AS dev",
+        "command -v qemu-system-aarch64",
+        "command -v ld",
     )
     missing = [item for item in required_dockerfile if item not in dockerfile]
     if missing:
         raise AssertionError(
-            "Dockerfile is missing required JETOS contract entries: "
+            "Dockerfile is missing required JETOS build dependencies/contract entries: "
             + ", ".join(missing)
         )
 
@@ -54,12 +59,7 @@ def assert_contract() -> None:
         )
 
     dockerignore = DOCKERIGNORE.read_text(encoding="utf-8").splitlines()
-    required_ignores = {
-        ".git",
-        ".build",
-        "source/linux",
-        "source/cpython",
-    }
+    required_ignores = {".git", ".build", "source/linux", "source/cpython"}
     missing_ignores = sorted(required_ignores.difference(dockerignore))
     if missing_ignores:
         raise AssertionError(
@@ -70,13 +70,9 @@ def assert_contract() -> None:
         raise AssertionError("Jenkinsfile is required for Git-triggered JETOS qualification")
     jenkins = JENKINSFILE.read_text(encoding="utf-8")
     if "python3 tools/work_server.py run-cycle" not in jenkins:
-        raise AssertionError(
-            "Jenkins must invoke the repository-owned JETOS Work Server cycle"
-        )
+        raise AssertionError("Jenkins must invoke the repository-owned JETOS Work Server cycle")
     if "jetos.py docker-test" in jenkins:
-        raise AssertionError(
-            "Jenkins must not duplicate the Work Server's Docker qualification policy"
-        )
+        raise AssertionError("Jenkins must not duplicate the Work Server's Docker qualification policy")
     if ".github/workflows" in jenkins:
         raise AssertionError("Jenkinsfile must not depend on GitHub Actions")
 
@@ -85,7 +81,7 @@ def main() -> int:
     assert_contract()
     print(
         "JETOS Docker contract: PASS "
-        f"({PYTHON_IMAGE}; targets={TEST_TARGET},{DEV_TARGET}; scheduler=Jenkins->WorkServer)"
+        f"({PYTHON_IMAGE}; targets={TEST_TARGET},{DEV_TARGET}; build-deps=container-owned)"
     )
     return 0
 
