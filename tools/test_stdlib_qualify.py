@@ -36,16 +36,12 @@ def main() -> int:
         assert "sqrt" in paths
         assert "sin" in paths
 
-        run(
-            "--module",
-            "math",
-            "--manifest",
-            str(candidate),
-            "--baseline",
-            str(baseline),
-            "--strict",
-        )
+        # A second run must reproduce the same inventoried surface. The tool no
+        # longer takes --baseline, so compare the two manifests directly.
+        run("--module", "math", "--manifest", str(candidate), "--strict")
         assert candidate.is_file()
+        repeat = json.loads(candidate.read_text(encoding="utf-8"))
+        assert repeat["modules"]["math"] == math_entry
 
         # These modules exposed signature-introspection exceptions in the
         # Python 3.14.8 JetLang build even though their imports were healthy.
