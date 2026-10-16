@@ -31,18 +31,23 @@ def mount_kernel_filesystems() -> None:
 
 
 def run_armed_stdlib_qualification() -> bool:
-    """Run fast qualification before shell; defer full regression to the prompt."""
+    """Run the armed stdlib/CPython qualification before exposing the shell."""
     marker = Path("/jetos/stdlib-qualify")
     if not marker.is_file():
         return False
     mode = marker.read_text(encoding="utf-8").strip()
     if mode not in {"fast", "full"}:
         raise SystemExit(f"invalid stdlib qualification mode: {mode!r}")
+    command = [
+        sys.executable,
+        "/jetos/tools/stdlib_qualify.py",
+        "--strict",
+        "--manifest",
+        "/tmp/stdlib-surface.json",
+    ]
     if mode == "full":
-        print("JETOS full stdlib/CPython regression suite armed for post-prompt qualify()", flush=True)
-        return False
-    command = [sys.executable, "/jetos/tools/stdlib_qualify.py", "--strict", "--manifest", "/tmp/stdlib-surface.json"]
-    print("JETOS stdlib qualification: fast", flush=True)
+        command.append("--full")
+    print(f"JETOS stdlib qualification: {mode}", flush=True)
     result = subprocess.run(command, check=False)
     state = "PASS" if result.returncode == 0 else "FAIL"
     print(f"JETOS_STDLIB_QUALIFICATION={state}", flush=True)
