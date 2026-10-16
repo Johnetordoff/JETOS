@@ -15,6 +15,14 @@ assert SPEC and SPEC.loader
 build = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(build)
 
+PACKAGE_SPEC = importlib.util.spec_from_file_location(
+    "jetos_package",
+    ROOT / "tools/package.py",
+)
+assert PACKAGE_SPEC and PACKAGE_SPEC.loader
+package = importlib.util.module_from_spec(PACKAGE_SPEC)
+PACKAGE_SPEC.loader.exec_module(package)
+
 
 def check(
     value: bool,
@@ -130,6 +138,26 @@ def main() -> int:
             "init imports JETOS PID 1",
         )
         checks += 3
+
+    with tempfile.TemporaryDirectory() as temp:
+        rootfs = Path(temp)
+        tool = package.install_guest_qualification(rootfs)
+        marker = rootfs / "jetos/guest-qualify"
+        check(tool.is_file(), "Fat guest qualification tool installed")
+        check(
+            marker.read_text(encoding="utf-8") == "run\n",
+            "Fat guest qualification marker armed",
+        )
+        qualifier = tool.read_text(encoding="utf-8")
+        check(
+            "configure_loopback" in qualifier,
+            "guest qualifier configures loopback",
+        )
+        check(
+            "ThreadingHTTPServer" in qualifier and "urlopen" in qualifier,
+            "guest qualifier runs server/client web smoke",
+        )
+        checks += 4
 
     print(
         "JETOS bootstrap tooling: "
