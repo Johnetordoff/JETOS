@@ -10,6 +10,7 @@ import shutil
 ROOT = Path(__file__).resolve().parents[1]
 BUILD_TOOL = ROOT / "tools/build.py"
 STDLIB_TOOL = ROOT / "tools/stdlib_qualify.py"
+GUEST_QUALIFY_TOOL = ROOT / "tools/guest_qualify.py"
 PROFILE_FAT = "fat"
 PROFILE_SKINNY = "skinny"
 TEMPORARY_BULLSHIT_DIRNAME = "Temporary Bullshit"
@@ -56,6 +57,16 @@ def install_stdlib_qualification(
     marker.unlink(missing_ok=True)
     if mode is not None:
         marker.write_text(mode + "\n", encoding="utf-8")
+    return target
+
+
+def install_guest_qualification(rootfs: Path) -> Path:
+    """Install and arm the Fat in-guest runtime/network qualifier."""
+    target = rootfs / "jetos/tools/guest_qualify.py"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(GUEST_QUALIFY_TOOL, target)
+    marker = rootfs / "jetos/guest-qualify"
+    marker.write_text("run\n", encoding="utf-8")
     return target
 
 
@@ -107,12 +118,14 @@ def package_rootfs(
         assert linux_source is not None
         installed = copy_linux_source(linux_source, rootfs)
         install_stdlib_qualification(rootfs, stdlib_qualify)
+        install_guest_qualification(rootfs)
         print(
             "Fat Linux source installed in guest: "
             f"{installed.relative_to(rootfs)}"
         )
         if stdlib_qualify:
             print(f"guest stdlib qualification armed: {stdlib_qualify}")
+        print("guest runtime/network qualification armed")
     else:
         strip_temporary_bullshit(rootfs)
         # Do not add complete Linux/CPython source trees, Temporary Bullshit,

@@ -103,6 +103,27 @@ def run_armed_stdlib_qualification() -> bool:
     return True
 
 
+def run_armed_guest_qualification() -> bool:
+    """Run same-runtime guest networking/web qualification when armed."""
+    marker = Path("/jetos/guest-qualify")
+    if not marker.is_file():
+        return False
+    mode = marker.read_text(encoding="utf-8").strip()
+    if mode != "run":
+        raise SystemExit(f"invalid guest qualification mode: {mode!r}")
+
+    print("JETOS guest qualification: runtime/network", flush=True)
+    result = subprocess.run(
+        [sys.executable, "/jetos/tools/guest_qualify.py"],
+        check=False,
+    )
+    state = "PASS" if result.returncode == 0 else "FAIL"
+    print(f"JETOS_GUEST_QUALIFICATION={state}", flush=True)
+    if result.returncode:
+        raise SystemExit(result.returncode)
+    return True
+
+
 def main() -> None:
     mount_kernel_filesystems()
 
@@ -160,11 +181,12 @@ def main() -> None:
     )
     print(
         "network: OFF "
-        "(VM has no virtual NIC)",
+        "(VM has no virtual NIC; loopback may be qualified locally)",
         flush=True,
     )
 
     run_armed_stdlib_qualification()
+    run_armed_guest_qualification()
 
     print(
         "shell: JETOS language interpreter",
