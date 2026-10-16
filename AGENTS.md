@@ -14,6 +14,7 @@ Before changing JetOS, read `MANDATE.md`, `ARCHITECTURE.md`, `README.md`, `ODROI
 - Distinguish implemented behavior from plans. Preserve provenance and exact source pins.
 - Runtime-affecting source work must qualify the newly built JetOS kernel and newly built JetLang runtime together where the environment supports it.
 - Do not let full-repository LOC/byte accounting block engineering work.
+- Treat `Documentation/FUTURE_AI_SPEECH_TORRENT.md` as the long-horizon design direction for AI-native support, speech-to-text/speech-to-command, and torrent/distributed-content services. Preserve its distinction between future architecture and implemented behavior, and prefer JetLang orchestration over premature kernel policy.
 - Keep the active tree small. Evidence-confirmed unused project-owned code should be removed rather than archived inside the live source tree.
 
 ## Repository layout
