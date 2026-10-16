@@ -35,7 +35,8 @@ TOOL_CAPABILITIES = {
     "kernel_debug_info_tool": "pahole",
     "package_config_query": "pkg-config",
     "x86_system_emulator": "qemu-system-x86_64",
-    "arm_system_emulator": "qemu-system-arm",
+    "arm32_system_emulator": "qemu-system-arm",
+    "arm64_system_emulator": "qemu-system-aarch64",
     "system_call_tracer": "strace",
 }
 
