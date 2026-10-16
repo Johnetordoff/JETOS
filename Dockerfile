@@ -80,3 +80,25 @@ RUN command -v qemu-system-aarch64 \
     && command -v make \
     && command -v ld
 CMD ["python", "jetos.py", "doctor"]
+
+# Temporary execution-capable Linux/x86_64 GreenGate proving ground.
+# Render builds the final stage on a real Linux Docker builder. The normal
+# Docker context intentionally omits the large source submodules, so this stage
+# fetches the exact pinned public upstream commits, then runs the repository
+# tests, builds NEW JetLang + NEW kernel + Fat image, boots QEMU under TCG, and
+# fails the image build unless the in-guest loopback/web qualifier passes.
+# This stage is evidence tooling only; it does not replace `python3 jetos.py dev`.
+FROM dev AS render-qualify
+COPY . /jetos
+RUN set -eux; \
+    rm -rf source/linux source/cpython; \
+    git clone --filter=blob:none --no-checkout https://github.com/gregkh/linux.git source/linux; \
+    git -C source/linux fetch --depth 1 origin 6d15a1029d425b15c59463910ebdccc4afe760d6; \
+    git -C source/linux checkout --detach 6d15a1029d425b15c59463910ebdccc4afe760d6; \
+    git clone --filter=blob:none --no-checkout https://github.com/python/cpython.git source/cpython; \
+    git -C source/cpython fetch --depth 1 origin 8e6e75d9102e39bed2a2b279203a396741180f12; \
+    git -C source/cpython checkout --detach 8e6e75d9102e39bed2a2b279203a396741180f12; \
+    python jetos.py test; \
+    python tools/dev.py build; \
+    python tools/boot_smoke.py
+CMD ["python", "-m", "http.server", "10000"]
