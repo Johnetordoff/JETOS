@@ -60,15 +60,13 @@ def install_stdlib_qualification(
     return target
 
 
-def install_guest_qualification(rootfs: Path, armed: bool = False) -> Path:
-    """Install the in-guest runtime/network qualifier and optional boot marker."""
+def install_guest_qualification(rootfs: Path) -> Path:
+    """Install and arm the Fat in-guest runtime/network qualifier."""
     target = rootfs / "jetos/tools/guest_qualify.py"
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(GUEST_QUALIFY_TOOL, target)
     marker = rootfs / "jetos/guest-qualify"
-    marker.unlink(missing_ok=True)
-    if armed:
-        marker.write_text("run\n", encoding="utf-8")
+    marker.write_text("run\n", encoding="utf-8")
     return target
 
 
@@ -102,7 +100,6 @@ def package_rootfs(
     stdlib: Path,
     linux_source: Path | None,
     stdlib_qualify: str | None,
-    guest_qualify: bool,
 ) -> None:
     """Construct one profile without leaking Fat source/tests into Skinny."""
     if profile not in {PROFILE_FAT, PROFILE_SKINNY}:
@@ -114,10 +111,6 @@ def package_rootfs(
         raise SystemExit(
             "Skinny packaging cannot arm the Fat stdlib qualification suite"
         )
-    if profile == PROFILE_SKINNY and guest_qualify:
-        raise SystemExit(
-            "Skinny packaging cannot arm the Fat guest qualification suite"
-        )
 
     build.make_rootfs(rootfs, python, stdlib)
 
@@ -125,15 +118,14 @@ def package_rootfs(
         assert linux_source is not None
         installed = copy_linux_source(linux_source, rootfs)
         install_stdlib_qualification(rootfs, stdlib_qualify)
-        install_guest_qualification(rootfs, guest_qualify)
+        install_guest_qualification(rootfs)
         print(
             "Fat Linux source installed in guest: "
             f"{installed.relative_to(rootfs)}"
         )
         if stdlib_qualify:
             print(f"guest stdlib qualification armed: {stdlib_qualify}")
-        if guest_qualify:
-            print("guest runtime/network qualification armed")
+        print("guest runtime/network qualification armed")
     else:
         strip_temporary_bullshit(rootfs)
         # Do not add complete Linux/CPython source trees, Temporary Bullshit,
@@ -167,11 +159,6 @@ def main() -> int:
         choices=("fast", "full"),
         help="Fat only: arm this image to run stdlib qualification during first boot",
     )
-    parser.add_argument(
-        "--guest-qualify",
-        action="store_true",
-        help="Fat only: arm in-guest loopback/web qualification during first boot",
-    )
     args = parser.parse_args()
 
     package_rootfs(
@@ -182,7 +169,6 @@ def main() -> int:
         stdlib=args.stdlib,
         linux_source=args.linux_source,
         stdlib_qualify=args.stdlib_qualify,
-        guest_qualify=args.guest_qualify,
     )
     return 0
 
