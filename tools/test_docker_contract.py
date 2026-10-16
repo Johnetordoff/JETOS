@@ -20,6 +20,12 @@ def main() -> int:
     contract.assert_contract()
 
     dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    assert "ARG BASE_IMAGE=debian:trixie-slim" in dockerfile
+    assert "FROM ${BASE_IMAGE} AS base" in dockerfile
+    assert "FROM python:" not in dockerfile
+    assert "ARG PYTHON_IMAGE=" not in dockerfile
+    assert "python:3.14.8-slim" not in dockerfile
+    assert "JETOS_BOOTSTRAP_PYTHON=/usr/bin/python3" in dockerfile
     assert "qemu-system-arm" in dockerfile
     assert "qemu-system-x86" in dockerfile
     assert "qemu-system-aarch64" in dockerfile
@@ -33,8 +39,8 @@ def main() -> int:
     assert "libgdbm-compat-dev" in dockerfile
     assert "tk-dev" in dockerfile
     assert "tools/container_os_qualify.py --phase build --require-toolchain" in dockerfile
-    assert 'CMD ["python", "tools/container_os_qualify.py", "--phase", "runtime", "--require-toolchain"]' in dockerfile
-    assert 'CMD ["python", "jetos.py", "doctor"]' in dockerfile
+    assert 'CMD ["python3", "tools/container_os_qualify.py", "--phase", "runtime", "--require-toolchain"]' in dockerfile
+    assert 'CMD ["python3", "jetos.py", "doctor"]' in dockerfile
     assert "VOLUME [\"/jetos/.build\"]" in dockerfile
 
     dockerignore = (ROOT / ".dockerignore").read_text(encoding="utf-8")
@@ -57,12 +63,19 @@ def main() -> int:
     assert 'sys.stdin.isatty() and sys.stdout.isatty()' in entrypoint
     assert 'def apple_silicon_docker_platform()' in entrypoint
     assert 'return "linux/arm64"' in entrypoint
+    assert 'DOCKER_DEV_IMAGE, "python3", "tools/dev.py"' in entrypoint
 
     dev = (ROOT / "tools/dev.py").read_text(encoding="utf-8")
     assert 'BUILD_REVISION = BUILD / ".jetos-build-revision"' in dev
     assert '["git", "rev-parse", "HEAD"]' in dev
     assert 'def clear_build_directory()' in dev
     assert 'def prepare_revision_build()' in dev
+    assert 'SOURCE_CPYTHON = SOURCE / "cpython"' in dev
+    assert 'copy_source("JetLang/CPython", SOURCE_CPYTHON' in dev
+    assert 'def build_language()' in dev
+    assert 'runtime, stdlib = build_language()' in dev
+    assert '"--python", str(runtime)' in dev
+    assert '"--stdlib", str(stdlib)' in dev
     assert 'JETOS source copy complete: {name}' in dev
     assert 'revision = prepare_revision_build()' in dev
 
