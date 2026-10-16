@@ -5,6 +5,10 @@ JETOS uses the Docker CLI directly from Python. The host supplies Docker and
 Git; compiler, linker, kernel-build, QEMU, and JetLang build dependencies live
 inside the repository-owned Docker image. There is intentionally no Docker SDK
 or GitHub Actions dependency.
+
+The container Python is a bootstrap/orchestration interpreter only. The JetOS
+runtime must be built from the pinned source/cpython lineage by tools/dev.py;
+a prebuilt Python Docker image must never define the guest runtime.
 """
 from __future__ import annotations
 
@@ -14,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DOCKERFILE = ROOT / "Dockerfile"
 DOCKERIGNORE = ROOT / ".dockerignore"
 JENKINSFILE = ROOT / "Jenkinsfile"
-PYTHON_IMAGE = "python:3.14.8-slim"
+BASE_IMAGE = "debian:trixie-slim"
 TEST_IMAGE = "jetos:fat-test"
 DEV_IMAGE = "jetos:dev"
 TEST_TARGET = "test"
@@ -24,16 +28,18 @@ DEV_TARGET = "dev"
 def assert_contract() -> None:
     dockerfile = DOCKERFILE.read_text(encoding="utf-8")
     required_dockerfile = (
-        f"ARG PYTHON_IMAGE={PYTHON_IMAGE}",
-        "FROM ${PYTHON_IMAGE} AS base",
+        f"ARG BASE_IMAGE={BASE_IMAGE}",
+        "FROM ${BASE_IMAGE} AS base",
+        "python3",
+        "JETOS_BOOTSTRAP_PYTHON=/usr/bin/python3",
         "binutils",
         "qemu-system-x86",
         "qemu-system-arm",
         'ENV CC="ccache cc"',
         "FROM base AS test",
-        "RUN python tools/container_os_qualify.py --phase build --require-toolchain",
-        "RUN python jetos.py test",
-        'CMD ["python", "tools/container_os_qualify.py", "--phase", "runtime", "--require-toolchain"]',
+        "RUN python3 tools/container_os_qualify.py --phase build --require-toolchain",
+        "RUN python3 jetos.py test",
+        'CMD ["python3", "tools/container_os_qualify.py", "--phase", "runtime", "--require-toolchain"]',
         "FROM base AS dev",
         "command -v qemu-system-aarch64",
         "command -v ld",
@@ -46,9 +52,12 @@ def assert_contract() -> None:
         )
 
     forbidden = (
-        ".github/workflows",
+        "FROM python:",
+        "ARG PYTHON_IMAGE=",
+        "python:3.14.8-slim",
         "python:3.13",
         "python:3.12",
+        ".github/workflows",
         "npm ",
         "node ",
     )
@@ -66,6 +75,21 @@ def assert_contract() -> None:
             ".dockerignore is missing required entries: " + ", ".join(missing_ignores)
         )
 
+    dev = (ROOT / "tools/dev.py").read_text(encoding="utf-8")
+    source_runtime_contract = (
+        'SOURCE_CPYTHON = SOURCE / "cpython"',
+        "def build_language()",
+        "runtime, stdlib = build_language()",
+        '"--python", str(runtime)',
+        '"--stdlib", str(stdlib)',
+    )
+    missing_runtime = [item for item in source_runtime_contract if item not in dev]
+    if missing_runtime:
+        raise AssertionError(
+            "JetOS Fat build is not demonstrably packaging the source-built "
+            "JetLang runtime: " + ", ".join(missing_runtime)
+        )
+
     if not JENKINSFILE.is_file():
         raise AssertionError("Jenkinsfile is required for Git-triggered JETOS qualification")
     jenkins = JENKINSFILE.read_text(encoding="utf-8")
@@ -81,7 +105,8 @@ def main() -> int:
     assert_contract()
     print(
         "JETOS Docker contract: PASS "
-        f"({PYTHON_IMAGE}; targets={TEST_TARGET},{DEV_TARGET}; build-deps=container-owned)"
+        f"({BASE_IMAGE}; bootstrap-python=build-only; "
+        f"targets={TEST_TARGET},{DEV_TARGET}; build-deps=container-owned)"
     )
     return 0
 
