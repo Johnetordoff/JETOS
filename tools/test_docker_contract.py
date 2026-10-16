@@ -68,6 +68,8 @@ def main() -> int:
 
     qualifier = (ROOT / "tools/container_os_qualify.py").read_text(encoding="utf-8")
     assert '"c_compiler": os.environ.get("CC", "cc")' in qualifier
+    assert '"arm32_system_emulator": "qemu-system-arm"' in qualifier
+    assert '"arm64_system_emulator": "qemu-system-aarch64"' in qualifier
     assert '"kernel_model": "shared host Linux kernel"' in qualifier
     assert 'phase == "runtime" and os.getpid() != 1' in qualifier
 
