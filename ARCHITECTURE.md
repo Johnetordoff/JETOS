@@ -4,9 +4,9 @@ This is the single canonical architecture file. Append future architectural chan
 
 ## System identity
 
-JetOS is one operating system across three first-class CPU targets: `x86_64`, `armv7`, and `arm64`/AArch64. Shared JetOS behavior stays architecture-neutral wherever possible; machine-specific divergence is isolated at real kernel, firmware, bootloader, device-tree/ACPI, QEMU, C, or assembly boundaries.
+JetOS is its own source-built Linux distribution and one operating system across three first-class CPU targets: `x86_64`, `armv7`, and `arm64`/AArch64. It is not a Gentoo, Debian, Ubuntu, Alpine, or other distribution derivative at build or runtime. Shared JetOS behavior stays architecture-neutral wherever possible; machine-specific divergence is isolated at real kernel, firmware, bootloader, device-tree/ACPI, QEMU, C, or assembly boundaries.
 
-The ODROID-HC1 is the current physical reference target. It is ARMv7 and requires real board qualification rather than generic ARM support alone. In JetOS terminology, **Gen 2 means the Gentoo/Linux-backed configuration context, not “second generation.”**
+The ODROID-HC1 is the current physical reference target. It is ARMv7 and requires real board qualification rather than generic ARM support alone. The historical **Gen 2** label records the Gentoo-informed configuration context from which this source estate was developed; it does not create an ongoing Gentoo dependency or update obligation.
 
 A complete image must pair a kernel and userspace for the same target architecture. Until explicit verified cross-userspace construction exists, rootfs/initramfs construction must run in a matching target-native environment or consume verified target-native runtime inputs.
 
@@ -32,7 +32,17 @@ source/
   ports/
 ```
 
-The target source-control architecture is one outer JETOS Git repository containing ordinary tracked source trees, with no nested Git repositories or nested `.git` metadata. Transitional submodules may remain only until the exact pinned Linux and CPython working trees are safely absorbed. After absorption, the JetLang tree is JetOS-owned source; upstream CPython repositories remain provenance, comparison, change-discovery, and test/reference sources rather than replacement working trees. Upstream URLs, versions, licenses, and commit IDs are recorded as JetOS-owned metadata.
+The target source-control architecture is one outer JETOS Git repository containing ordinary tracked source trees, with no nested Git repositories or nested `.git` metadata. Transitional submodules may remain only until the exact pinned Linux and CPython working trees are safely absorbed.
+
+After absorption, `source/linux` is JetOS-owned kernel source and `source/cpython` is JetOS-owned JetLang source. Their recorded upstream repositories and commits remain provenance and reference points, not rolling distribution dependencies. JetOS does not update its Linux source merely because an upstream distribution or Linux release moved; kernel changes are deliberate JetOS source integrations made for a specific capability, fix, security need, hardware target, or engineering decision and are qualified as JetOS changes.
+
+Upstream CPython may continue to be examined as a compatibility/change stream under the JetLang rules above. Upstream URLs, versions, licenses, and original commit IDs remain recorded as provenance.
+
+## Bootstrap boundary
+
+Raw source cannot compile itself without some already-executable compiler/tooling. That unavoidable bootstrap machinery is external build infrastructure, not part of the JetOS distribution identity. JetOS must not select Debian, Gentoo, or another Linux distribution as its canonical base merely to obtain a compiler.
+
+Native Linux hosts may build the vendored source directly with a qualifying external toolchain. Docker, when used, is an optional test/build harness supplied with a caller-selected bootstrap image that already provides required tools; the repository must not name a default Linux distribution image. Bootstrap Python/toolchains must never be copied into JetOS in place of the runtime built from `source/cpython` and `source/linux`.
 
 ## Integrated-runtime qualification
 
@@ -44,7 +54,7 @@ Testing only an old/prebuilt kernel, an old/prebuilt interpreter, or isolated so
 
 JetOS records a distant-future architectural direction in `Documentation/FUTURE_AI_SPEECH_TORRENT.md`: AI support, high-performance speech-to-text/speech-to-command, and torrent/distributed-content services should become first-class JetOS workloads rather than unrelated application stacks.
 
-This is **planned architecture, not current implementation**. The design direction is to keep policy and orchestration in JetLang, reuse and qualify Linux/Gentoo substrate capabilities first, and add kernel/native changes only when end-to-end measurements establish a real need.
+This is **planned architecture, not current implementation**. The design direction is to keep policy and orchestration in JetLang, reuse and qualify the JetOS/Linux substrate first, and add kernel/native changes only when end-to-end measurements establish a real need.
 
 Speech and AI are intended to converge on one low-latency streaming control path: Linux audio capture feeds incremental recognition, incremental intent/command interpretation, and a capability-checked execution boundary. Torrent/distributed-content services should share the same resource, storage, networking, lifecycle, and observability substrate while normally running at lower/background priority than interactive speech or foreground AI.
 
@@ -52,7 +62,7 @@ The architecture should preserve strong support for audio capture, asynchronous/
 
 ## Fat and Skinny
 
-Fat Mode contains the source/build/diagnostic/qualification environment. Skinny Mode is a target-specific qualified runtime projection and must not accidentally include complete Linux/CPython source trees, temporary development material, or test bulk.
+Fat Mode contains the source/build/diagnostic/qualification environment. Skinny Mode is a target-specific qualified runtime projection and must not accidentally include complete Linux/CPython source trees, temporary development material, test bulk, or external bootstrap machinery.
 
 ## Architecture-specific boundaries
 
