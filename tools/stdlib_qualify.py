@@ -64,6 +64,14 @@ def inventory(name:str):
     try:return True,json.loads(lines[-1]),""
     except Exception as exc:return False,[],f"inventory JSON error: {exc}"
 
+def surface(manifest:dict[str,Any])->dict[str,Any]:
+    """Return the stable callable surface used for baseline comparisons."""
+    return {
+        name: entry.get("callables", [])
+        for name, entry in sorted(manifest.get("modules", {}).items())
+        if entry.get("import") == "PASS" and entry.get("inventory") == "PASS"
+    }
+
 def regression_counts(output:str)->dict[str,int|None]:
     """Extract CPython regrtest summary counts without treating skips as passes."""
     counts={"passed":None,"failed":None,"skipped":None}
@@ -91,7 +99,7 @@ def applicable_modules(requested):
     return sorted(modules)
 
 def main():
-    parser=argparse.ArgumentParser(); parser.add_argument("--module",action="append",dest="modules"); parser.add_argument("--manifest",type=Path); parser.add_argument("--full",action="store_true"); parser.add_argument("--strict",action="store_true"); args=parser.parse_args()
+    parser=argparse.ArgumentParser(); parser.add_argument("--module",action="append",dest="modules"); parser.add_argument("--manifest",type=Path); parser.add_argument("--baseline",type=Path); parser.add_argument("--full",action="store_true"); parser.add_argument("--strict",action="store_true"); args=parser.parse_args()
     modules=applicable_modules(args.modules); failures=[]; manifest={"implementation":sys.implementation.name,"python":sys.version,"platform":sys.platform,"executable":sys.executable,"modules":{},"probes":{}}
     callable_total=0
     for name in modules:
@@ -105,6 +113,18 @@ def main():
         for name,code in PROBES.items():
             result=child(code); passed=ok(result); manifest["probes"][name]="PASS" if passed else f"FAIL: {detail(result)}"
             if not passed: failures.append(f"capability {name}")
+    if args.baseline:
+        try:
+            baseline=json.loads(args.baseline.read_text(encoding="utf-8"))
+        except (OSError,json.JSONDecodeError) as exc:
+            print(f"FAIL baseline: {exc}")
+            failures.append("language surface baseline")
+        else:
+            if surface(baseline)!=surface(manifest):
+                print("FAIL language surface differs from baseline")
+                failures.append("language surface baseline")
+            else:
+                print("PASS language surface matches baseline")
     if args.full:
         passed,summary=run_full_suite(); manifest["cpython_regression_suite"]={"status":"PASS" if passed else "FAIL",**summary}; print("CPython regression counts: "+" ".join(f"{k}={v if v is not None else 'unknown'}" for k,v in summary.items() if k!="exit_code"))
         if not passed: failures.append("CPython regression suite")
