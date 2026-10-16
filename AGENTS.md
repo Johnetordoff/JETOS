@@ -17,6 +17,23 @@ Before changing JetOS, read `MANDATE.md`, `ARCHITECTURE.md`, `README.md`, `ODROI
 - Treat `Documentation/FUTURE_AI_SPEECH_TORRENT.md` as the long-horizon design direction for AI-native support, speech-to-text/speech-to-command, and torrent/distributed-content services. Preserve its distinction between future architecture and implemented behavior, and prefer JetLang orchestration over premature kernel policy.
 - Keep the active tree small. Evidence-confirmed unused project-owned code should be removed rather than archived inside the live source tree.
 
+## Qualification priority — Linux x86_64 first
+
+This ordering is mandatory for JetOS engineering and qualification work until explicitly superseded by the owner.
+
+1. **Linux x86_64 is the first and gating environment.** Do not spend qualification runs on other host environments or architectures while Linux x86_64 still has an unbuilt stage, an unbooted stage, an unrun required test, or an actual failing required test.
+2. On one exact revision, Linux x86_64 must build a **NEW x86_64 JetLang**, a **NEW x86_64 JetOS kernel**, and the required **NEW Fat image/initramfs**; boot the new kernel under the repository-supported x86_64 QEMU path; start the new JetLang inside that new JetOS runtime; and reach the interactive interpreter prompt.
+3. The Linux x86_64 gate is not green until basic interpreter/runtime behavior passes and the full available Python/JetLang test surface is accounted for. Run all repository-native Python/JetLang tests and the broadest practical CPython-derived standard-library regression suite using canonical machinery such as `python -m test` or the repository equivalent. The intent is **every available relevant standard-library test module/library**, not a hand-picked subset.
+4. Record passed, failed, skipped, unavailable, interrupted, and remaining tests separately. Skipped, unavailable, or interrupted tests are not passes. Do not call Linux x86_64 green while any actual failure remains or any required test remains unrun.
+5. Use the shortest failure loop: execute the canonical Linux x86_64 path, capture the first concrete failure, make the smallest evidence-supported repair, rerun that failure first, then immediately resume the remaining deterministic suite.
+6. Only after Linux x86_64 is genuinely green may qualification move to the next environments. The current order after Linux x86_64 is:
+   1. Intel macOS x86_64;
+   2. Apple Silicon M1/macOS arm64;
+   3. remaining ARM environments and targets, including ODROID/Linux arm variants;
+   4. Windows and other declared environments, unless the owner explicitly changes the order.
+7. Success on one environment or architecture must never be inferred as success on another. Each later environment needs its own build/boot/runtime/test evidence.
+8. No source-reduction or unrelated portability detours should displace an unfinished Linux x86_64 full-qualification run.
+
 ## Repository layout
 
 ```text
