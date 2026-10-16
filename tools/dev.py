@@ -42,12 +42,6 @@ def current_revision() -> str:
 
 
 def clear_build_directory() -> None:
-    """Clear build contents without deleting BUILD itself.
-
-    Docker Desktop mounts /jetos/.build as a native Docker volume on macOS.
-    Removing the mount point itself fails with EBUSY, so stale-revision cleanup
-    must remove only its children and preserve the mounted directory.
-    """
     BUILD.mkdir(parents=True, exist_ok=True)
     for child in BUILD.iterdir():
         if child.is_symlink() or child.is_file():
@@ -57,17 +51,12 @@ def clear_build_directory() -> None:
 
 
 def prepare_revision_build() -> str:
-    """Ensure cached artifacts belong to the exact current JetOS revision."""
     revision = current_revision()
     recorded = BUILD_REVISION.read_text(encoding="utf-8").strip() if BUILD_REVISION.is_file() else None
     if recorded == revision:
         return revision
-
     if BUILD.exists():
-        print(
-            "JETOS source revision changed; discarding stale JetLang/kernel/Fat artifacts",
-            flush=True,
-        )
+        print("JETOS source revision changed; discarding stale JetLang/kernel/Fat artifacts", flush=True)
     clear_build_directory()
     BUILD_REVISION.write_text(revision + "\n", encoding="utf-8")
     return revision
@@ -86,11 +75,10 @@ def source_provenance_commit(source: Path) -> str:
     if not SOURCE_PROVENANCE.is_file():
         raise SystemExit(f"Unified source provenance is missing: {SOURCE_PROVENANCE}")
     data = json.loads(SOURCE_PROVENANCE.read_text(encoding="utf-8"))
-    name = source.name
     try:
-        return str(data["sources"][name]["upstream_commit"])
+        return str(data["sources"][source.name]["upstream_commit"])
     except (KeyError, TypeError) as exc:
-        raise SystemExit(f"Missing provenance for source/{name}") from exc
+        raise SystemExit(f"Missing provenance for source/{source.name}") from exc
 
 
 def source_head(source: Path) -> str:
@@ -101,16 +89,10 @@ def source_head(source: Path) -> str:
 
 def require_source(name: str, source: Path, expected_commit: str, required_file: str) -> None:
     if not (source / required_file).is_file():
-        raise SystemExit(
-            f"{name} source is missing at {source}. "
-            "JETOS will not download it during prepare/build/run. Use a complete unified JETOS checkout."
-        )
+        raise SystemExit(f"{name} source is missing at {source}. JETOS will not download it during prepare/build/run. Use a complete unified JETOS checkout.")
     actual = source_head(source)
     if actual != expected_commit:
-        raise SystemExit(
-            f"{name} source provenance mismatch: {actual}; required {expected_commit}. "
-            "JETOS will not silently build an unrecorded revision."
-        )
+        raise SystemExit(f"{name} source provenance mismatch: {actual}; required {expected_commit}. JETOS will not silently build an unrecorded revision.")
 
 
 def copy_source(name: str, source: Path, destination: Path, commit: str, required_file: str) -> None:
@@ -171,13 +153,7 @@ def kernel_image(target_arch: str) -> Path:
 def build_kernel(target_arch: str) -> Path:
     image = kernel_image(target_arch)
     if not image.exists():
-        run([
-            sys.executable,
-            "tools/kernel_cache.py",
-            str(LINUX_SOURCE),
-            "--source", str(SOURCE_LINUX),
-            "--arch", target_arch,
-        ])
+        run([sys.executable, "tools/kernel_cache.py", str(LINUX_SOURCE), "--source", str(SOURCE_LINUX), "--arch", target_arch])
     if not image.exists():
         raise SystemExit(f"kernel build did not produce {image}")
     return image
@@ -185,14 +161,14 @@ def build_kernel(target_arch: str) -> Path:
 
 def build_initramfs(runtime: Path, stdlib: Path) -> None:
     run([
-        sys.executable,
-        "tools/package.py",
+        sys.executable, "tools/package.py",
         "--profile", "fat",
         "--rootfs", str(ROOTFS),
         "--output", str(INITRAMFS),
         "--python", str(runtime),
         "--stdlib", str(stdlib),
         "--linux-source", str(SOURCE_LINUX),
+        "--stdlib-qualify", "full",
     ])
 
 
