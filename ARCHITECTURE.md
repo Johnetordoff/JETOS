@@ -40,6 +40,16 @@ A runtime-affecting source change is not fully tested unless the current/new Jet
 
 Testing only an old/prebuilt kernel, an old/prebuilt interpreter, or isolated source trees is insufficient for final integrated qualification.
 
+## Long-horizon native workloads: AI, speech, and torrent services
+
+JetOS records a distant-future architectural direction in `Documentation/FUTURE_AI_SPEECH_TORRENT.md`: AI support, high-performance speech-to-text/speech-to-command, and torrent/distributed-content services should become first-class JetOS workloads rather than unrelated application stacks.
+
+This is **planned architecture, not current implementation**. The design direction is to keep policy and orchestration in JetLang, reuse and qualify Linux/Gentoo substrate capabilities first, and add kernel/native changes only when end-to-end measurements establish a real need.
+
+Speech and AI are intended to converge on one low-latency streaming control path: Linux audio capture feeds incremental recognition, incremental intent/command interpretation, and a capability-checked execution boundary. Torrent/distributed-content services should share the same resource, storage, networking, lifecycle, and observability substrate while normally running at lower/background priority than interactive speech or foreground AI.
+
+The architecture should preserve strong support for audio capture, asynchronous/pollable I/O, networking, hardware/accelerator discovery, cgroups/resource accounting, storage integrity, streaming/cancellation semantics, and target-neutral JetLang APIs. These capabilities should remain available across `x86_64`, `armv7`, and `arm64` while permitting target-specific acceleration only at real native boundaries.
+
 ## Fat and Skinny
 
 Fat Mode contains the source/build/diagnostic/qualification environment. Skinny Mode is a target-specific qualified runtime projection and must not accidentally include complete Linux/CPython source trees, temporary development material, or test bulk.
