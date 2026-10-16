@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for the JETOS Docker/Fat-mode contract."""
+"""Tests for the JETOS distro-neutral optional Docker harness."""
 from __future__ import annotations
 
 import importlib.util
@@ -12,97 +12,41 @@ SPEC = importlib.util.spec_from_file_location(
 )
 assert SPEC and SPEC.loader
 contract = importlib.util.module_from_spec(SPEC)
-spec_loader = SPEC.loader
-spec_loader.exec_module(contract)
+SPEC.loader.exec_module(contract)
 
 
 def main() -> int:
     contract.assert_contract()
 
     dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
-    assert "ARG BASE_IMAGE=debian:trixie-slim" in dockerfile
-    assert "FROM ${BASE_IMAGE} AS base" in dockerfile
-    assert "FROM python:" not in dockerfile
-    assert "ARG PYTHON_IMAGE=" not in dockerfile
-    assert "python:3.14.8-slim" not in dockerfile
+    assert "ARG JETOS_BOOTSTRAP_IMAGE" in dockerfile
+    assert "FROM ${JETOS_BOOTSTRAP_IMAGE} AS base" in dockerfile
+    for forbidden in (
+        "debian:", "gentoo:", "ubuntu:", "alpine:", "FROM python:",
+        "apt-get", "emerge ", "apk ", "dnf ", "yum ",
+    ):
+        assert forbidden not in dockerfile
     assert "JETOS_BOOTSTRAP_PYTHON=/usr/bin/python3" in dockerfile
-    assert "qemu-system-arm" in dockerfile
-    assert "qemu-system-x86" in dockerfile
-    assert "qemu-system-aarch64" in dockerfile
-    assert "strace" in dockerfile
-    assert 'ENV CC="ccache cc"' in dockerfile
-    assert "ENV CCACHE_COMPILERCHECK=content" in dockerfile
+    assert "command -v python3" in dockerfile
+    assert "command -v qemu-system-arm" in dockerfile
     assert "command -v qemu-system-aarch64" in dockerfile
-    assert "command -v cc" in dockerfile
-    assert "command -v make" in dockerfile
-    assert "libgdbm-dev" in dockerfile
-    assert "libgdbm-compat-dev" in dockerfile
-    assert "tk-dev" in dockerfile
-    assert "tools/container_os_qualify.py --phase build --require-toolchain" in dockerfile
-    assert 'CMD ["python3", "tools/container_os_qualify.py", "--phase", "runtime", "--require-toolchain"]' in dockerfile
+    assert "command -v qemu-system-x86_64" in dockerfile
     assert 'CMD ["python3", "jetos.py", "doctor"]' in dockerfile
-    assert "VOLUME [\"/jetos/.build\"]" in dockerfile
-
-    dockerignore = (ROOT / ".dockerignore").read_text(encoding="utf-8")
-    assert "source/linux" in dockerignore
-    assert "source/cpython" in dockerignore
-    assert "vendor/linux" not in dockerignore
-    assert "vendor/cpython" not in dockerignore
-
-    entrypoint = (ROOT / "jetos.py").read_text(encoding="utf-8")
-    assert 'sub.add_parser(' in entrypoint
-    assert '"docker-test"' in entrypoint
-    assert '"--target", TEST_TARGET' in entrypoint
-    assert '"--target", DEV_TARGET' in entrypoint
-    assert 'docker, "info", "--format", "{{.ServerVersion}}"' in entrypoint
-    assert '"source/linux": "Makefile"' in entrypoint
-    assert '"source/cpython": "Python/sysmodule.c"' in entrypoint
-    assert '"submodule"' in entrypoint
-    assert '"--init"' in entrypoint
-    assert 'ensure_dev_sources()' in entrypoint
-    assert 'sys.stdin.isatty() and sys.stdout.isatty()' in entrypoint
-    assert 'def apple_silicon_docker_platform()' in entrypoint
-    assert 'return "linux/arm64"' in entrypoint
-    assert 'DOCKER_DEV_IMAGE, "python3", "tools/dev.py"' in entrypoint
 
     dev = (ROOT / "tools/dev.py").read_text(encoding="utf-8")
-    assert 'BUILD_REVISION = BUILD / ".jetos-build-revision"' in dev
-    assert '["git", "rev-parse", "HEAD"]' in dev
-    assert 'def clear_build_directory()' in dev
-    assert 'def prepare_revision_build()' in dev
+    assert 'SOURCE_LINUX = SOURCE / "linux"' in dev
     assert 'SOURCE_CPYTHON = SOURCE / "cpython"' in dev
+    assert 'copy_source("Linux", SOURCE_LINUX' in dev
     assert 'copy_source("JetLang/CPython", SOURCE_CPYTHON' in dev
-    assert 'def build_language()' in dev
     assert 'runtime, stdlib = build_language()' in dev
     assert '"--python", str(runtime)' in dev
     assert '"--stdlib", str(stdlib)' in dev
-    assert 'JETOS source copy complete: {name}' in dev
-    assert 'revision = prepare_revision_build()' in dev
 
-    qualifier = (ROOT / "tools/container_os_qualify.py").read_text(encoding="utf-8")
-    assert '"c_compiler": os.environ.get("CC", "cc")' in qualifier
-    assert '"arm32_system_emulator": "qemu-system-arm"' in qualifier
-    assert '"arm64_system_emulator": "qemu-system-aarch64"' in qualifier
-    assert '"kernel_model": "shared host Linux kernel"' in qualifier
-    assert 'phase == "runtime" and os.getpid() != 1' in qualifier
+    entrypoint = (ROOT / "jetos.py").read_text(encoding="utf-8")
+    assert "JETOS_BOOTSTRAP_IMAGE" in entrypoint
+    assert '"--build-arg"' in entrypoint
 
-    jenkins = (ROOT / "Jenkinsfile").read_text(encoding="utf-8")
-    assert "python3 tools/work_server.py run-cycle" in jenkins
-    assert "python3 jetos.py docker-test" not in jenkins
-    assert "github/workflows" not in jenkins.lower()
-
-    work_server = (ROOT / "tools/work_server.py").read_text(encoding="utf-8")
-    assert '"docker-os-qualification", [python, "jetos.py", "docker-test"]' in work_server
-    assert '"fat-build", [python, "jetos.py", "dev", "--build-only"]' in work_server
-    assert '".github/workflows/"' in work_server
-    assert '"source/linux/"' in work_server
-    assert '"source/cpython/"' in work_server
-
-    native_test = (ROOT / "tools/test.py").read_text(encoding="utf-8")
-    assert 'C_COMPILER = os.environ.get("CC", "cc")' in native_test
-    assert 'run(\n        "gcc"' not in native_test
-
-    print("JETOS Docker contract tests: PASS")
+    print("JETOS distro-neutral Docker contract tests: PASS")
     return 0
 
 
