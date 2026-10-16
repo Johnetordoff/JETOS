@@ -33,12 +33,36 @@ def main() -> int:
         '"arch/arm64/boot/Image"',
         'tools/stdlib_qualify.py',
         '"--profile", "fat"',
+        '"--stdlib-qualify", "full"',
         'tools/build.py", "vm"',
     )
     require(
         "tools/build.py",
         '"arm64"',
         'qemu-system-aarch64',
+        '"ttyAMA0"',
+        '"virt"',
+        '"-cpu"',
+        '"max"',
+    )
+    require(
+        "src/jetos/startup.py",
+        '"jetos> "',
+        '"qualify"',
+    )
+    require(
+        "tools/guest_qualify.py",
+        'sys.implementation.name != "jetos"',
+        'tempfile.TemporaryDirectory',
+        'subprocess.run',
+        'JETOS_ENV_PROBE',
+        'fcntl.ioctl',
+        'ThreadingHTTPServer',
+        'urllib.request.urlopen',
+    )
+    require(
+        "tools/stdlib_qualify.py",
+        '"-m", "test"',
     )
     print("M1 canonical-path contract: PASS")
     return 0
