@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline tests for the Behind a Log version-drift verifier."""
+"""Offline tests for the JetLang Python integration-backlog verifier."""
 from __future__ import annotations
 
 import importlib.util
@@ -23,22 +23,8 @@ def check(value: bool, message: str) -> None:
 
 def main() -> int:
     checks = 0
-
     check(mod.version_tuple("3.15.0") == (3, 15, 0), "version tuple")
     check("1 feature series behind" in mod.drift_description("3.14.8", "3.15.0", "feature"), "python series drift")
-    check("16 patch release(s) behind" in mod.drift_description("6.12.96", "6.12.112", "kernel"), "kernel patch drift")
-    check("1 major-number line(s) behind" in mod.drift_description("6.12.96", "7.2.10", "kernel"), "kernel major drift")
-    checks += 4
-
-    kernel = mod.linux_state(
-        '{"releases":['
-        '{"moniker":"stable","version":"7.2.10","released":{"isodate":"2026-10-11"}},'
-        '{"moniker":"longterm","version":"6.12.112","released":{"isodate":"2026-10-03"}}'
-        ']}',
-        "6.12.96",
-    )
-    check(kernel["stable"] == "7.2.10", "kernel stable parse")
-    check(kernel["same_line"] == "6.12.112", "kernel longterm parse")
     checks += 2
 
     py = mod.python_state(
@@ -48,38 +34,31 @@ def main() -> int:
     checks += 1
 
     original_docs = mod.DOCS
-    original_gentoo = mod.GENTOO_LOG
     original_python = mod.PYTHON_LOG
     try:
         with tempfile.TemporaryDirectory() as temp:
             docs = Path(temp)
             mod.DOCS = docs
-            mod.GENTOO_LOG = docs / "Behind a Log of Gentoo.md"
             mod.PYTHON_LOG = docs / "Behind a Log of Python.md"
-            pins = {
-                "linux_version": "6.12.96",
-                "linux_commit": "linux-pin",
-                "python_version": "3.14.8",
-                "python_commit": "python-pin",
-            }
-            checked = "2026-10-14T19:00:00+00:00"
-            mod.write_logs(pins, kernel, py, checked)
-            first_g = mod.GENTOO_LOG.read_text(encoding="utf-8")
-            first_p = mod.PYTHON_LOG.read_text(encoding="utf-8")
-            mod.write_logs(pins, kernel, py, checked)
-            second_g = mod.GENTOO_LOG.read_text(encoding="utf-8")
-            second_p = mod.PYTHON_LOG.read_text(encoding="utf-8")
-            check(first_g == second_g, "gentoo history idempotent")
-            check(first_p == second_p, "python history idempotent")
-            check("linux:6.12.96:7.2.10:6.12.112" in first_g, "gentoo fingerprint")
-            check("python:3.14.8:3.15.0" in first_p, "python fingerprint")
-            checks += 4
+            pins = {"python_version": "3.14.8", "python_commit": "python-pin"}
+            checked = "2026-10-16T14:00:00+00:00"
+            mod.write_log(pins, py, checked)
+            first = mod.PYTHON_LOG.read_text(encoding="utf-8")
+            mod.write_log(pins, py, checked)
+            second = mod.PYTHON_LOG.read_text(encoding="utf-8")
+            check(first == second, "python history idempotent")
+            check("python:3.14.8:3.15.0" in first, "python fingerprint")
+            checks += 2
     finally:
         mod.DOCS = original_docs
-        mod.GENTOO_LOG = original_gentoo
         mod.PYTHON_LOG = original_python
 
-    print("JETOS Behind a Log verifier: %d checks passed" % checks)
+    source = (ROOT / "tools/verify_behind_a_log.py").read_text(encoding="utf-8")
+    check("KERNEL_RELEASES" not in source, "kernel drift tracking retired")
+    check("GENTOO_LOG" not in source, "gentoo rolling log retired")
+    checks += 2
+
+    print("JETOS Python Behind-a-Log verifier: %d checks passed" % checks)
     return 0
 
 
