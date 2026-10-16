@@ -34,6 +34,19 @@ This ordering is mandatory for JetOS engineering and qualification work until ex
 7. Success on one environment or architecture must never be inferred as success on another. Each later environment needs its own build/boot/runtime/test evidence.
 8. No source-reduction or unrelated portability detours should displace an unfinished Linux x86_64 full-qualification run.
 
+## Private native Git authentication
+
+JetOS is private by design. Native/local workers must authenticate with native Git using credentials injected through the worker's secret environment. Never put a password, personal access token, installation token, or other secret in a Git remote URL, repository file, commit, PR, task prompt, command transcript, or chat message.
+
+- Preferred environment variables are `JETOS_GIT_TOKEN`, then `GH_TOKEN`, then `GITHUB_TOKEN`.
+- `JETOS_GIT_USERNAME` is optional and defaults to `x-access-token`.
+- Use a repository-scoped token with the minimum permissions required by the worker. Read-only clone/fetch workers need only repository read access; workers that must push repair branches need repository-content write access.
+- Account passwords are not the authentication mechanism for native HTTPS Git. Do not ask the owner to paste a GitHub password or token into chat.
+- `tools/private_git_clone.py` performs an authenticated native `git clone` using a temporary `GIT_ASKPASS` helper. It does not place the token in the command line, remote URL, or Git configuration.
+- A fresh worker still needs the credential provisioned by its runtime/secret manager before the first private clone. Repository code cannot bootstrap authorization for a host that has no credential yet.
+- Treat DNS/network failures separately from authentication failures. `Could not resolve host` is connectivity; 401/403, credential prompts, or a private-repository not-found response can indicate missing/insufficient authorization.
+- See `Documentation/NATIVE_GIT_AUTH.md` for the canonical procedure.
+
 ## Repository layout
 
 ```text
