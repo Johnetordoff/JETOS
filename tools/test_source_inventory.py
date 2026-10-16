@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
-"""Fast deterministic tests for tools/source_inventory.py."""
+"""Fast deterministic tests for tools/source_inventory.py and its query path."""
 from __future__ import annotations
 
+import io
+import json
 import tempfile
 from pathlib import Path
 
 import source_inventory
+import source_inventory_query
 
 
 def main() -> int:
@@ -31,6 +34,7 @@ def main() -> int:
 
         data = source_inventory.scan(root)
         summary = data["summary"]
+        assert data["schema_version"] == 2
         assert summary["files"] == 3
         assert summary["bytes"] == 26
         assert summary["text_files"] == 2
@@ -43,15 +47,66 @@ def main() -> int:
         assert types["Makefile"]["text_lines"] == 2
         assert types[".bin"]["files"] == 1
 
+        areas = {item["source_area"]: item for item in data["source_areas"]}
+        assert areas["jetos"]["files"] == 3
+        assert source_inventory.source_area_for_path("source/linux/kernel/fork.c") == "linux"
+        assert (
+            source_inventory.source_area_for_path("source/cpython/Python/ceval.c")
+            == "jetlang-cpython"
+        )
+        assert source_inventory.source_area_for_path("source/shared/runtime.c") == "shared"
+        assert source_inventory.source_area_for_path("source/ports/gcc/x.c") == "ports"
+
         output = root / "out"
         source_inventory.write_outputs(data, output)
         assert (output / "source-inventory.json").is_file()
+        assert (output / "source-inventory.jsonl").is_file()
+        assert (output / "source-inventory.csv").is_file()
         assert (output / "source-inventory.md").is_file()
         assert (output / "source-tree.txt").read_text(encoding="utf-8").splitlines() == [
             "Makefile",
             "alpha.c",
             "binary.bin",
         ]
+
+        jsonl_rows = list(
+            source_inventory_query.iter_inventory_rows(output / "source-inventory.jsonl")
+        )
+        json_rows = list(
+            source_inventory_query.iter_inventory_rows(output / "source-inventory.json")
+        )
+        assert jsonl_rows == json_rows == data["files"]
+
+        selected = list(
+            source_inventory_query.iter_matches(
+                jsonl_rows,
+                exact_paths=[],
+                prefixes=[],
+                globs=["*.c"],
+                contains=[],
+                areas=["jetos"],
+                types=[".c"],
+            )
+        )
+        assert [row["path"] for row in selected] == ["alpha.c"]
+
+        selected = list(
+            source_inventory_query.iter_matches(
+                jsonl_rows,
+                exact_paths=["Makefile"],
+                prefixes=[],
+                globs=[],
+                contains=[],
+                areas=[],
+                types=[],
+            )
+        )
+        assert [row["path"] for row in selected] == ["Makefile"]
+
+        buffer = io.StringIO()
+        count = source_inventory_query.emit(selected, "jsonl", buffer)
+        assert count == 1
+        assert json.loads(buffer.getvalue())["path"] == "Makefile"
 
     print("JETOS source inventory tests: PASS")
     return 0
