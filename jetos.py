@@ -44,21 +44,21 @@ def missing_source_trees() -> list[str]:
 
 
 def ensure_dev_sources() -> None:
-    """Ensure exact transitional source trees exist before Docker gets the checkout."""
+    """Ensure the recorded source trees exist before building JETOS."""
     missing = missing_source_trees()
     if not missing:
         return
     if (ROOT / ".gitmodules").is_file():
         git = shutil.which("git")
         if not git:
-            raise SystemExit("JETOS source preparation requires Git for the transitional source layout.")
+            raise SystemExit("JETOS transitional source preparation requires Git")
         run([git, "submodule", "update", "--init", "--recursive", "source/linux", "source/cpython"])
         missing = missing_source_trees()
         if not missing:
             return
     raise SystemExit(
-        "JETOS development source trees are missing: " + ", ".join(missing)
-        + ". A complete checkout is required before the kernel and JetLang can build."
+        "JETOS source trees are missing: " + ", ".join(missing)
+        + ". Complete/vendored source is required before kernel and JetLang builds."
     )
 
 
@@ -70,12 +70,11 @@ def apple_silicon_docker_platform():
 
 
 def require_docker() -> str:
-    """The host boundary is deliberately small: Docker CLI + reachable daemon."""
+    """Check Docker only for explicitly requested optional Docker harness commands."""
     docker = shutil.which("docker")
     if not docker:
         raise SystemExit(
-            "JETOS requires Docker to build and boot. Install/start Docker, then rerun `python3 jetos.py dev`. "
-            "Compiler, linker, QEMU, and JetLang/kernel build dependencies are supplied by the JETOS Docker image."
+            "The optional JETOS Docker harness requires Docker. JetOS itself has no Docker or distribution-base runtime dependency."
         )
     probe = subprocess.run(
         [docker, "info", "--format", "{{.ServerVersion}}"], cwd=ROOT,
@@ -83,21 +82,26 @@ def require_docker() -> str:
     )
     if probe.returncode != 0:
         detail = (probe.stderr or probe.stdout).strip() or "no diagnostic output"
-        raise SystemExit(
-            "JETOS requires a reachable Docker daemon. Start/connect Docker and rerun `python3 jetos.py dev`. "
-            f"Docker reported: {detail}"
-        )
+        raise SystemExit("Docker harness requested but Docker is unreachable: " + detail)
     print(f"Docker daemon: {probe.stdout.strip()}")
-    docker_platform = apple_silicon_docker_platform()
-    if docker_platform:
-        print(f"Docker platform: {docker_platform} (Apple Silicon native)")
     return docker
+
+
+def docker_bootstrap_image() -> str:
+    """Return caller-supplied external tooling image; JetOS chooses no distro."""
+    image = os.environ.get("JETOS_BOOTSTRAP_IMAGE", "").strip()
+    if not image:
+        raise SystemExit(
+            "Optional Docker harness requires JETOS_BOOTSTRAP_IMAGE to name an external image that already provides python3, git, cc, make, ld, ccache, QEMU, and strace. JetOS deliberately supplies no Debian/Gentoo/default distribution image."
+        )
+    return image
 
 
 def docker_test() -> None:
     docker = require_docker()
+    bootstrap = docker_bootstrap_image()
     docker_platform = apple_silicon_docker_platform()
-    build_command = [docker, "build", "--pull"]
+    build_command = [docker, "build", "--pull", "--build-arg", f"JETOS_BOOTSTRAP_IMAGE={bootstrap}"]
     if docker_platform:
         build_command.extend(["--platform", docker_platform])
     build_command.extend(["--target", TEST_TARGET, "--tag", DOCKER_TEST_IMAGE, "."])
@@ -111,8 +115,9 @@ def docker_test() -> None:
 
 def docker_dev(build_only: bool) -> None:
     docker = require_docker()
+    bootstrap = docker_bootstrap_image()
     docker_platform = apple_silicon_docker_platform()
-    build_command = [docker, "build", "--pull"]
+    build_command = [docker, "build", "--pull", "--build-arg", f"JETOS_BOOTSTRAP_IMAGE={bootstrap}"]
     if docker_platform:
         build_command.extend(["--platform", docker_platform])
     build_command.extend(["--target", DEV_TARGET, "--tag", DOCKER_DEV_IMAGE, "."])
@@ -130,7 +135,7 @@ def docker_dev(build_only: bool) -> None:
     print(f"JETOS Docker build workspace: {DOCKER_DEV_BUILD_VOLUME} -> /jetos/.build", flush=True)
     if os.name == "posix" and Path("/dev/kvm").exists():
         command.extend(["--device", "/dev/kvm"])
-    command.extend([DOCKER_DEV_IMAGE, "python", "tools/dev.py", "build" if build_only else "run"])
+    command.extend([DOCKER_DEV_IMAGE, "python3", "tools/dev.py", "build" if build_only else "run"])
     os.execvp(docker, command)
 
 
@@ -154,14 +159,14 @@ def print_all_text() -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="JETOS development, build, and VM entry point")
     sub = parser.add_subparsers(dest="command", required=True)
-    sub.add_parser("doctor", help="check the Docker host boundary")
-    setup = sub.add_parser("setup", help="plan or install Docker host prerequisites")
+    sub.add_parser("doctor", help="check the optional Docker harness")
+    setup = sub.add_parser("setup", help="plan or install optional host tooling")
     setup.add_argument("--plan", action="store_true")
     setup.add_argument("--install", action="store_true")
     setup.add_argument("--yes", action="store_true")
     sub.add_parser("test", help="run repository tests on the current host")
-    sub.add_parser("docker-test", help="build and run JETOS userspace/OS qualification in Docker")
-    dev = sub.add_parser("dev", help="build and boot JETOS in its Docker/QEMU development environment")
+    sub.add_parser("docker-test", help="run optional container qualification using a caller-supplied bootstrap image")
+    dev = sub.add_parser("dev", help="build/boot through the optional Docker/QEMU harness")
     dev.add_argument("--build-only", action="store_true")
     work_server = sub.add_parser("work-server", help="run the persistent self-hosted JETOS build/test/improvement server")
     work_server.add_argument("--host", default="127.0.0.1")
@@ -174,7 +179,8 @@ def main() -> int:
 
     if args.command == "doctor":
         require_docker()
-        print("JETOS host boundary: PASS (Docker reachable; build dependencies are container-owned)")
+        docker_bootstrap_image()
+        print("JETOS optional Docker harness: PASS")
     elif args.command == "setup":
         mode = "install" if args.install else "plan"
         forwarded = [mode]
