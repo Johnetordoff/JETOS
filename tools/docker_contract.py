@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""JETOS Docker/Fat-mode contract checks.
+"""JETOS optional Docker/Fat-mode harness contract checks.
 
-JETOS uses the Docker CLI directly from Python. The host supplies Docker and
-Git; compiler, linker, kernel-build, QEMU, and JetLang build dependencies live
-inside the repository-owned Docker image. There is intentionally no Docker SDK
-or GitHub Actions dependency.
+JetOS is its own source-built Linux distribution. Docker is optional external
+build/test machinery and must not select Debian, Gentoo, Python, or any other
+distribution as the JetOS substrate. A caller-supplied bootstrap image may be
+used only to provide already-installed build capabilities.
 
-The container Python is a bootstrap/orchestration interpreter only. The JetOS
-runtime must be built from the pinned source/cpython lineage by tools/dev.py;
-a prebuilt Python Docker image must never define the guest runtime.
+The JetOS runtime is built from the vendored source/linux and source/cpython
+lineages by tools/dev.py. A bootstrap image/interpreter must never define the
+guest runtime.
 """
 from __future__ import annotations
 
@@ -18,7 +18,6 @@ ROOT = Path(__file__).resolve().parents[1]
 DOCKERFILE = ROOT / "Dockerfile"
 DOCKERIGNORE = ROOT / ".dockerignore"
 JENKINSFILE = ROOT / "Jenkinsfile"
-BASE_IMAGE = "debian:trixie-slim"
 TEST_IMAGE = "jetos:fat-test"
 DEV_IMAGE = "jetos:dev"
 TEST_TARGET = "test"
@@ -28,26 +27,25 @@ DEV_TARGET = "dev"
 def assert_contract() -> None:
     dockerfile = DOCKERFILE.read_text(encoding="utf-8")
     required_dockerfile = (
-        f"ARG BASE_IMAGE={BASE_IMAGE}",
-        "FROM ${BASE_IMAGE} AS base",
-        "python3",
+        "ARG JETOS_BOOTSTRAP_IMAGE",
+        "FROM ${JETOS_BOOTSTRAP_IMAGE} AS base",
         "JETOS_BOOTSTRAP_PYTHON=/usr/bin/python3",
-        "binutils",
-        "qemu-system-x86",
-        "qemu-system-arm",
-        'ENV CC="ccache cc"',
+        "command -v python3",
+        "command -v cc",
+        "command -v make",
+        "command -v ld",
+        "command -v qemu-system-x86_64",
+        "command -v qemu-system-arm",
+        "command -v qemu-system-aarch64",
         "FROM base AS test",
         "RUN python3 tools/container_os_qualify.py --phase build --require-toolchain",
         "RUN python3 jetos.py test",
-        'CMD ["python3", "tools/container_os_qualify.py", "--phase", "runtime", "--require-toolchain"]',
         "FROM base AS dev",
-        "command -v qemu-system-aarch64",
-        "command -v ld",
     )
     missing = [item for item in required_dockerfile if item not in dockerfile]
     if missing:
         raise AssertionError(
-            "Dockerfile is missing required JETOS build dependencies/contract entries: "
+            "Dockerfile is missing required distro-neutral harness entries: "
             + ", ".join(missing)
         )
 
@@ -55,8 +53,15 @@ def assert_contract() -> None:
         "FROM python:",
         "ARG PYTHON_IMAGE=",
         "python:3.14.8-slim",
-        "python:3.13",
-        "python:3.12",
+        "debian:",
+        "gentoo:",
+        "ubuntu:",
+        "alpine:",
+        "apt-get",
+        "emerge ",
+        "apk ",
+        "dnf ",
+        "yum ",
         ".github/workflows",
         "npm ",
         "node ",
@@ -64,7 +69,8 @@ def assert_contract() -> None:
     present = [item for item in forbidden if item in dockerfile]
     if present:
         raise AssertionError(
-            "Dockerfile contains stale/forbidden material: " + ", ".join(present)
+            "Dockerfile selects a forbidden distribution/package substrate: "
+            + ", ".join(present)
         )
 
     dockerignore = DOCKERIGNORE.read_text(encoding="utf-8").splitlines()
@@ -77,6 +83,7 @@ def assert_contract() -> None:
 
     dev = (ROOT / "tools/dev.py").read_text(encoding="utf-8")
     source_runtime_contract = (
+        'SOURCE_LINUX = SOURCE / "linux"',
         'SOURCE_CPYTHON = SOURCE / "cpython"',
         "def build_language()",
         "runtime, stdlib = build_language()",
@@ -86,8 +93,8 @@ def assert_contract() -> None:
     missing_runtime = [item for item in source_runtime_contract if item not in dev]
     if missing_runtime:
         raise AssertionError(
-            "JetOS Fat build is not demonstrably packaging the source-built "
-            "JetLang runtime: " + ", ".join(missing_runtime)
+            "JetOS build is not demonstrably packaging its vendored source-built runtime: "
+            + ", ".join(missing_runtime)
         )
 
     if not JENKINSFILE.is_file():
@@ -95,8 +102,6 @@ def assert_contract() -> None:
     jenkins = JENKINSFILE.read_text(encoding="utf-8")
     if "python3 tools/work_server.py run-cycle" not in jenkins:
         raise AssertionError("Jenkins must invoke the repository-owned JETOS Work Server cycle")
-    if "jetos.py docker-test" in jenkins:
-        raise AssertionError("Jenkins must not duplicate the Work Server's Docker qualification policy")
     if ".github/workflows" in jenkins:
         raise AssertionError("Jenkinsfile must not depend on GitHub Actions")
 
@@ -105,8 +110,7 @@ def main() -> int:
     assert_contract()
     print(
         "JETOS Docker contract: PASS "
-        f"({BASE_IMAGE}; bootstrap-python=build-only; "
-        f"targets={TEST_TARGET},{DEV_TARGET}; build-deps=container-owned)"
+        "(external bootstrap only; no distribution base; JetOS runtime source-built)"
     )
     return 0
 
