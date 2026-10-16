@@ -130,7 +130,7 @@ def docker_dev(build_only: bool) -> None:
     print(f"JETOS Docker build workspace: {DOCKER_DEV_BUILD_VOLUME} -> /jetos/.build", flush=True)
     if os.name == "posix" and Path("/dev/kvm").exists():
         command.extend(["--device", "/dev/kvm"])
-    command.extend([DOCKER_DEV_IMAGE, "python", "tools/dev.py", "build" if build_only else "run"])
+    command.extend([DOCKER_DEV_IMAGE, "python3", "tools/dev.py", "build" if build_only else "run"])
     os.execvp(docker, command)
 
 
