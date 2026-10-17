@@ -118,3 +118,13 @@ Build acceleration must preserve correctness. A cached compiler result or reusab
 Do not rebuild an unchanged kernel merely because unrelated JetOS or JetLang code changed when a correctness-preserving kernel cache can prove that all kernel-relevant inputs are identical.
 
 Kernel reduction is conservative and incremental. Remove only capabilities for which there is evidence that JetOS does not require them. A reduced kernel configuration is not proven by compilation alone: before the reduction is treated as qualified, the newly built kernel must satisfy the integrated-runtime qualification in section 5, including the supported JetLang/standard-library surface.
+
+## 16. OS-first Python/JetLang qualification
+
+During CPython-derived standard-library qualification, preserve JetLang behavior by default and repair the JetOS operating substrate first. A failing, hanging, unavailable, or interrupted standard-library test is presumed to expose an OS/kernel/configuration/early-userspace contract problem until evidence distinguishes JetLang from an equivalently configured reference CPython runtime.
+
+Do not patch JetLang merely to compensate for missing or misconfigured ordinary operating-system facilities. Processes and fork/exec/wait behavior, pipes, signals, clocks/timers, polling/selectors, filesystems and permissions, `/proc`, `/sys`, `/dev`, devpts, `/tmp`, sockets/loopback/network setup, threads/synchronization, memory mapping, terminals, dynamic loading and required native libraries are JetOS substrate responsibilities when the supported Python standard library depends on them.
+
+For each standard-library failure, preserve the exact first failure or hang; investigate JetOS kernel configuration and early userspace first; prefer one minimal substrate correction that restores the normal Linux/POSIX contract for all callers; rebuild the affected layer; rerun the focused test; then resume the full suite. JetLang changes are a last resort and require evidence that JetOS already provides the required contract and that an equivalent/reference CPython succeeds where JetLang fails, unless the owner explicitly authorizes a deliberate JetLang divergence.
+
+JetOS remains minimal, but minimal does not mean incomplete. Kernel or userspace reduction is subordinate to the supported JetLang standard-library contract. JetOS and JetLang may share implementation, but ordinary OS semantics remain OS responsibilities and Python language/runtime semantics remain JetLang responsibilities. See `Documentation/OS_FIRST_PYTHON_QUALIFICATION.md` for the operational failure loop and differential-oracle guidance.
