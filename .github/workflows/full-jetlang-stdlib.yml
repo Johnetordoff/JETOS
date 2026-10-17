@@ -6,8 +6,9 @@ on:
       - test/full-jetlang-stdlib-20261016
 
 jobs:
-  full-stdlib:
-    runs-on: ubuntu-24.04
+  arm64-full-stdlib:
+    name: ARM64 native full stdlib
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 180
     steps:
       - name: Check out JetOS
@@ -18,6 +19,11 @@ jobs:
       - name: Fetch only pinned JetLang source
         run: git submodule update --init --depth 1 --recommend-shallow source/cpython
 
+      - name: Confirm native architecture
+        run: |
+          uname -a
+          test "$(uname -m)" = "aarch64"
+
       - name: Install build dependencies
         run: |
           sudo apt-get update
@@ -27,7 +33,7 @@ jobs:
             libgdbm-dev libgdbm-compat-dev tk-dev uuid-dev xz-utils \
             libncurses-dev libexpat1-dev
 
-      - name: Build fresh JetLang from pinned CPython source
+      - name: Build fresh ARM64 JetLang from pinned CPython source
         run: |
           rm -rf .build/jetlang-src .build/jetlang-build .build/jetlang-install
           mkdir -p .build
@@ -36,25 +42,121 @@ jobs:
           python3 tools/language.py build .build/jetlang-src \
             --build .build/jetlang-build \
             --prefix .build/jetlang-install
+          file .build/jetlang-build/python
+          .build/jetlang-build/python -c 'import platform,sys; print(platform.machine()); print(sys.implementation); assert platform.machine() in ("aarch64","arm64"); assert sys.implementation.name == "jetos"'
           python3 tools/language.py smoke --build .build/jetlang-build
 
-      - name: Run complete JetLang stdlib and CPython-derived regression suite
+      - name: Run complete ARM64 JetLang stdlib and CPython-derived regression suite
         shell: bash
         run: |
           set -o pipefail
-          cp tools/stdlib_qualify.py .build/stdlib_qualify_parallel.py
-          sed -i 's/"-j1"/"-j4"/' .build/stdlib_qualify_parallel.py
-          .build/jetlang-build/python -I .build/stdlib_qualify_parallel.py \
+          cp tools/stdlib_qualify.py .build/stdlib_qualify_arm64.py
+          sed -i 's/"-j1"/"-j4"/' .build/stdlib_qualify_arm64.py
+          .build/jetlang-build/python -I .build/stdlib_qualify_arm64.py \
             --strict --full \
-            --manifest .build/jetlang-stdlib-full.json \
-            2>&1 | tee .build/jetlang-stdlib-full.log
+            --manifest .build/jetlang-stdlib-full-arm64.json \
+            2>&1 | tee .build/jetlang-stdlib-full-arm64.log
 
-      - name: Publish qualification evidence
+      - name: Publish ARM64 qualification evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: jetlang-stdlib-full-evidence
+          name: jetlang-stdlib-full-arm64-evidence
           path: |
-            .build/jetlang-stdlib-full.json
-            .build/jetlang-stdlib-full.log
+            .build/jetlang-stdlib-full-arm64.json
+            .build/jetlang-stdlib-full-arm64.log
+          if-no-files-found: warn
+
+  armv7-full-stdlib:
+    name: ARMv7 QEMU full stdlib
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 360
+    steps:
+      - name: Check out JetOS
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Fetch only pinned JetLang source
+        run: git submodule update --init --depth 1 --recommend-shallow source/cpython
+
+      - name: Install ARMv7 execution environment
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            debootstrap qemu-user-static binfmt-support file
+
+      - name: Build ARMv7 userspace and fresh JetLang
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ROOT="$RUNNER_TEMP/jetlang-armv7-root"
+          sudo qemu-debootstrap --arch=armhf noble "$ROOT" http://ports.ubuntu.com/ubuntu-ports
+          sudo cp /etc/resolv.conf "$ROOT/etc/resolv.conf"
+          sudo mount -t proc proc "$ROOT/proc"
+          sudo mount --rbind /dev "$ROOT/dev"
+          sudo mount --make-rslave "$ROOT/dev"
+          sudo mount --rbind /sys "$ROOT/sys"
+          sudo mount --make-rslave "$ROOT/sys"
+          cleanup() {
+            sudo umount -R "$ROOT/sys" 2>/dev/null || true
+            sudo umount -R "$ROOT/dev" 2>/dev/null || true
+            sudo umount "$ROOT/proc" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          sudo chroot "$ROOT" /bin/bash -lc 'dpkg --print-architecture; uname -m; file /bin/bash'
+          sudo chroot "$ROOT" /bin/bash -lc 'apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y python3 build-essential pkg-config libssl-dev libffi-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev liblzma-dev libgdbm-dev libgdbm-compat-dev tk-dev uuid-dev xz-utils libncurses-dev libexpat1-dev ca-certificates file'
+
+          sudo mkdir -p "$ROOT/work/JETOS"
+          tar --exclude=.git --exclude=.build -cf - . | sudo tar -C "$ROOT/work/JETOS" -xf -
+
+          sudo chroot "$ROOT" /bin/bash -lc '
+            set -euxo pipefail
+            cd /work/JETOS
+            rm -rf .build
+            mkdir -p .build
+            cp -a source/cpython .build/jetlang-src
+            python3 tools/language.py patch .build/jetlang-src
+            python3 tools/language.py build .build/jetlang-src --build .build/jetlang-build --prefix .build/jetlang-install
+            file .build/jetlang-build/python
+            .build/jetlang-build/python -c '\''import platform,sys; print(platform.machine()); print(sys.implementation); assert platform.machine().startswith("arm"); assert sys.implementation.name == "jetos"'\''
+            python3 tools/language.py smoke --build .build/jetlang-build
+          '
+
+      - name: Run complete ARMv7 JetLang stdlib and CPython-derived regression suite
+        shell: bash
+        run: |
+          set -uo pipefail
+          ROOT="$RUNNER_TEMP/jetlang-armv7-root"
+          sudo mountpoint -q "$ROOT/proc" || sudo mount -t proc proc "$ROOT/proc"
+          sudo mountpoint -q "$ROOT/dev" || sudo mount --rbind /dev "$ROOT/dev"
+          sudo mountpoint -q "$ROOT/sys" || sudo mount --rbind /sys "$ROOT/sys"
+          set +e
+          sudo chroot "$ROOT" /bin/bash -lc '
+            set -o pipefail
+            cd /work/JETOS
+            cp tools/stdlib_qualify.py .build/stdlib_qualify_armv7.py
+            sed -i '\''s/"-j1"/"-j2"/'\'' .build/stdlib_qualify_armv7.py
+            .build/jetlang-build/python -I .build/stdlib_qualify_armv7.py --strict --full --manifest .build/jetlang-stdlib-full-armv7.json 2>&1 | tee .build/jetlang-stdlib-full-armv7.log
+          '
+          STATUS=$?
+          set -e
+          mkdir -p .build
+          sudo cp "$ROOT/work/JETOS/.build/jetlang-stdlib-full-armv7.json" .build/ 2>/dev/null || true
+          sudo cp "$ROOT/work/JETOS/.build/jetlang-stdlib-full-armv7.log" .build/ 2>/dev/null || true
+          sudo chown -R "$USER":"$USER" .build
+          sudo umount -R "$ROOT/sys" 2>/dev/null || true
+          sudo umount -R "$ROOT/dev" 2>/dev/null || true
+          sudo umount "$ROOT/proc" 2>/dev/null || true
+          exit "$STATUS"
+
+      - name: Publish ARMv7 qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jetlang-stdlib-full-armv7-evidence
+          path: |
+            .build/jetlang-stdlib-full-armv7.json
+            .build/jetlang-stdlib-full-armv7.log
           if-no-files-found: warn
