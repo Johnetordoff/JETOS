@@ -17,6 +17,7 @@ import os
 from pathlib import Path
 import platform
 import selectors
+import shlex
 import shutil
 import subprocess
 import sys
@@ -36,7 +37,6 @@ REQUIRED_SOURCES = {
 }
 REQUIRED_TOOLS = (
     "git",
-    "cc",
     "ld",
     "make",
     "bc",
@@ -63,6 +63,33 @@ def revision() -> str:
     return result.stdout.strip()
 
 
+def compiler_command() -> tuple[list[str], str]:
+    value = os.environ.get("CC", "cc")
+    try:
+        command = shlex.split(value)
+    except ValueError as exc:
+        raise RuntimeError(f"invalid CC command {value!r}: {exc}") from exc
+    if not command:
+        raise RuntimeError("CC is empty; configure a C compiler command")
+    resolved = shutil.which(command[0])
+    if resolved is None:
+        raise RuntimeError(f"configured C compiler was not found: CC={value!r}")
+    return [resolved, *command[1:]], value
+
+
+def kvm_usable(path: Path = Path("/dev/kvm")) -> bool:
+    """Return whether this process can actually open KVM, not merely see it."""
+    if not path.exists():
+        return False
+    try:
+        fd = os.open(path, os.O_RDWR)
+    except OSError:
+        return False
+    else:
+        os.close(fd)
+        return True
+
+
 def preflight() -> dict[str, object]:
     if platform.system() != "Linux":
         raise RuntimeError(f"Green Gate requires Linux execution; got {platform.system()}")
@@ -78,13 +105,16 @@ def preflight() -> dict[str, object]:
     missing_tools = [name for name, path in tools.items() if path is None]
     if missing_tools:
         raise RuntimeError("missing Green-Gate host tools: " + ", ".join(missing_tools))
+    compiler, configured_cc = compiler_command()
 
     return {
         "system": platform.system(),
         "machine": machine,
         "python": platform.python_version(),
         "tools": tools,
-        "kvm": Path("/dev/kvm").exists(),
+        "compiler": compiler,
+        "configured_cc": configured_cc,
+        "kvm": kvm_usable(),
     }
 
 
@@ -175,7 +205,7 @@ def qemu_command() -> list[str]:
         raise RuntimeError("qemu-system-x86_64 disappeared after preflight")
     build_tool = load_build_tool()
     memory = build_tool.initramfs_vm_memory(INITRAMFS)
-    accel = "kvm" if Path("/dev/kvm").exists() else "tcg"
+    accel = "kvm" if kvm_usable() else "tcg"
     return [
         qemu,
         "-accel", accel,
