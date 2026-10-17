@@ -46,6 +46,13 @@ def main() -> int:
     assert "JETOS_BOOTSTRAP_IMAGE" in entrypoint
     assert '"--build-arg"' in entrypoint
 
+    qualifier = (ROOT / "tools/container_os_qualify.py").read_text(encoding="utf-8")
+    assert "MIN_BOOTSTRAP_PYTHON = (3, 10)" in qualifier
+    assert "EXPECTED_PYTHON" not in qualifier
+    assert '"python_role": "bootstrap-only"' in qualifier
+    assert '"external container Linux kernel"' in qualifier
+    assert "JetLang's required version is enforced on the source-built runtime" in qualifier
+
     print("JETOS distro-neutral Docker contract tests: PASS")
     return 0
 
