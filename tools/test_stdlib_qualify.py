@@ -58,6 +58,12 @@ def main() -> int:
         assert '"_ios_support"' in tool_text
         assert '"_wmi"' in tool_text
         assert "except Exception:" in tool_text
+        # A long full-suite run must expose the last test reached before a
+        # hang/stop on M1, x86_64, or ARMv7 rather than buffering until exit.
+        assert "subprocess.Popen(" in tool_text
+        assert "stderr=subprocess.STDOUT" in tool_text
+        assert 'print(line,end="",flush=True)' in tool_text
+        assert 'output="".join(lines)' in tool_text
 
     print("JETOS stdlib qualification tooling: PASS")
     return 0
