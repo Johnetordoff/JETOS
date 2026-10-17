@@ -16,7 +16,7 @@ jobs:
           submodules: false
 
       - name: Fetch only pinned JetLang source
-        run: git submodule update --init source/cpython
+        run: git submodule update --init --depth 1 --recommend-shallow source/cpython
 
       - name: Install build dependencies
         run: |
