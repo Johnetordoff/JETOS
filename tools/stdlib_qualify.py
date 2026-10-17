@@ -88,10 +88,28 @@ def regression_counts(output:str)->dict[str,int|None]:
     return counts
 
 def run_full_suite():
-    result=subprocess.run([sys.executable,"-I","-m","test","-j1"],text=True,capture_output=True)
-    output=(result.stdout or "")+(result.stderr or "")
-    print(output,end="" if output.endswith("\n") else "\n")
-    return result.returncode==0,{"exit_code":result.returncode,**regression_counts(output)}
+    """Run regrtest while teeing progress to the JetOS console.
+
+    ARMv7/HC1 qualification can take hours.  Buffering the complete regression
+    suite hid the last test reached when a guest hung or was killed.  Stream a
+    single combined stdout/stderr pipe while retaining the text needed for the
+    existing summary parser.
+    """
+    process=subprocess.Popen(
+        [sys.executable,"-I","-m","test","-j1"],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        bufsize=1,
+    )
+    assert process.stdout is not None
+    lines=[]
+    for line in process.stdout:
+        print(line,end="",flush=True)
+        lines.append(line)
+    returncode=process.wait()
+    output="".join(lines)
+    return returncode==0,{"exit_code":returncode,**regression_counts(output)}
 
 def applicable_modules(requested):
     modules=set(requested or sys.stdlib_module_names)
