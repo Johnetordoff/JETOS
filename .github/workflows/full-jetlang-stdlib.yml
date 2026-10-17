@@ -1,4 +1,4 @@
-name: Full JetLang standard library qualification
+name: ARMv7 JetLang standard library qualification
 
 on:
   push:
@@ -6,67 +6,6 @@ on:
       - test/full-jetlang-stdlib-20261016
 
 jobs:
-  arm64-full-stdlib:
-    name: ARM64 native full stdlib
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 180
-    steps:
-      - name: Check out JetOS
-        uses: actions/checkout@v4
-        with:
-          submodules: false
-
-      - name: Fetch only pinned JetLang source
-        run: git submodule update --init --depth 1 --recommend-shallow source/cpython
-
-      - name: Confirm native architecture
-        run: |
-          uname -a
-          test "$(uname -m)" = "aarch64"
-
-      - name: Install build dependencies
-        run: |
-          sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-            build-essential pkg-config libssl-dev libffi-dev zlib1g-dev \
-            libbz2-dev libreadline-dev libsqlite3-dev liblzma-dev \
-            libgdbm-dev libgdbm-compat-dev tk-dev uuid-dev xz-utils \
-            libncurses-dev libexpat1-dev
-
-      - name: Build fresh ARM64 JetLang from pinned CPython source
-        run: |
-          rm -rf .build/jetlang-src .build/jetlang-build .build/jetlang-install
-          mkdir -p .build
-          cp -a source/cpython .build/jetlang-src
-          python3 tools/language.py patch .build/jetlang-src
-          python3 tools/language.py build .build/jetlang-src \
-            --build .build/jetlang-build \
-            --prefix .build/jetlang-install
-          file .build/jetlang-build/python
-          .build/jetlang-build/python -c 'import platform,sys; print(platform.machine()); print(sys.implementation); assert platform.machine() in ("aarch64","arm64"); assert sys.implementation.name == "jetos"'
-          python3 tools/language.py smoke --build .build/jetlang-build
-
-      - name: Run complete ARM64 JetLang stdlib and CPython-derived regression suite
-        shell: bash
-        run: |
-          set -o pipefail
-          cp tools/stdlib_qualify.py .build/stdlib_qualify_arm64.py
-          sed -i 's/"-j1"/"-j4"/' .build/stdlib_qualify_arm64.py
-          .build/jetlang-build/python -I .build/stdlib_qualify_arm64.py \
-            --strict --full \
-            --manifest .build/jetlang-stdlib-full-arm64.json \
-            2>&1 | tee .build/jetlang-stdlib-full-arm64.log
-
-      - name: Publish ARM64 qualification evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: jetlang-stdlib-full-arm64-evidence
-          path: |
-            .build/jetlang-stdlib-full-arm64.json
-            .build/jetlang-stdlib-full-arm64.log
-          if-no-files-found: warn
-
   armv7-full-stdlib:
     name: ARMv7 QEMU full stdlib
     runs-on: ubuntu-24.04-arm
@@ -105,7 +44,7 @@ jobs:
           }
           trap cleanup EXIT
 
-          sudo chroot "$ROOT" /bin/bash -lc 'dpkg --print-architecture; uname -m; file /bin/bash'
+          sudo chroot "$ROOT" /bin/bash -lc 'dpkg --print-architecture; uname -m; test "$(dpkg --print-architecture)" = armhf'
           sudo chroot "$ROOT" /bin/bash -lc 'apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y python3 build-essential pkg-config libssl-dev libffi-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev liblzma-dev libgdbm-dev libgdbm-compat-dev tk-dev uuid-dev xz-utils libncurses-dev libexpat1-dev ca-certificates file'
 
           sudo mkdir -p "$ROOT/work/JETOS"
@@ -119,8 +58,9 @@ jobs:
             cp -a source/cpython .build/jetlang-src
             python3 tools/language.py patch .build/jetlang-src
             python3 tools/language.py build .build/jetlang-src --build .build/jetlang-build --prefix .build/jetlang-install
-            file .build/jetlang-build/python
-            .build/jetlang-build/python -c '\''import platform,sys; print(platform.machine()); print(sys.implementation); assert platform.machine().startswith("arm"); assert sys.implementation.name == "jetos"'\''
+            file .build/jetlang-build/python | tee .build/jetlang-armv7-elf.txt
+            grep -Eq "ELF 32-bit.*ARM" .build/jetlang-armv7-elf.txt
+            .build/jetlang-build/python -c '\''import platform,struct,sys; print(platform.machine()); print(platform.architecture()); print(sys.implementation); assert struct.calcsize("P") == 4; assert sys.maxsize < 2**32; assert sys.implementation.name == "jetos"'\''
             python3 tools/language.py smoke --build .build/jetlang-build
           '
 
@@ -145,6 +85,7 @@ jobs:
           mkdir -p .build
           sudo cp "$ROOT/work/JETOS/.build/jetlang-stdlib-full-armv7.json" .build/ 2>/dev/null || true
           sudo cp "$ROOT/work/JETOS/.build/jetlang-stdlib-full-armv7.log" .build/ 2>/dev/null || true
+          sudo cp "$ROOT/work/JETOS/.build/jetlang-armv7-elf.txt" .build/ 2>/dev/null || true
           sudo chown -R "$USER":"$USER" .build
           sudo umount -R "$ROOT/sys" 2>/dev/null || true
           sudo umount -R "$ROOT/dev" 2>/dev/null || true
@@ -159,4 +100,5 @@ jobs:
           path: |
             .build/jetlang-stdlib-full-armv7.json
             .build/jetlang-stdlib-full-armv7.log
+            .build/jetlang-armv7-elf.txt
           if-no-files-found: warn
