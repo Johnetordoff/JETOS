@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "purpose": "Record OS/runtime facilities added while bringing the CPython-derived JetLang standard library to Green Gate. After the first in-guest stdlib PASS, remove/disable candidates one at a time and rerun qualification before deciding they are required.",
+  "policy": {
+    "baseline": "keep during bring-up until JETOS_STDLIB_QUALIFICATION=PASS is observed in a current-revision guest",
+    "minimization": "after baseline PASS, test one candidate removal at a time and keep only dependencies whose removal causes a reproducible qualification regression",
+    "jetlang_changes": "do not compensate in JetLang for missing ordinary Linux/POSIX facilities during baseline qualification"
+  },
+  "kernel_facilities": [
+    {"name": "CONFIG_UNIX98_PTYS", "reason": "pty/terminal stdlib contract", "status": "bringup-required-candidate"},
+    {"name": "CONFIG_SHMEM", "reason": "shared-memory stdlib contract", "status": "bringup-required-candidate"},
+    {"name": "CONFIG_INET", "reason": "loopback/socket/network stdlib contract", "status": "bringup-required-candidate"},
+    {"name": "CONFIG_FUTEX", "reason": "thread/synchronization stdlib contract", "status": "bringup-required-candidate"},
+    {"name": "CONFIG_EPOLL", "reason": "selectors/asyncio stdlib contract", "status": "bringup-required-candidate"}
+  ],
+  "early_userspace": [
+    {"name": "devpts", "reason": "PTY allocation", "status": "bringup-required-candidate"},
+    {"name": "/dev/shm", "reason": "POSIX shared memory", "status": "bringup-required-candidate"},
+    {"name": "loopback", "reason": "local socket/network tests", "status": "bringup-required-candidate"},
+    {"name": "/tmp mode 1777", "reason": "ordinary temporary-file semantics", "status": "bringup-required-candidate"},
+    {"name": "libgcc_s.so.1", "reason": "glibc dlopen dependency for thread cancellation/exit/unwinding", "status": "bringup-required-candidate"}
+  ],
+  "etc_files": [
+    {"name": "/etc/passwd", "reason": "pwd/getpass/expanduser", "status": "bringup-required-candidate"},
+    {"name": "/etc/group", "reason": "grp/terminal group lookup", "status": "bringup-required-candidate"},
+    {"name": "/etc/hosts", "reason": "localhost resolution", "status": "bringup-required-candidate"},
+    {"name": "/etc/nsswitch.conf", "reason": "name-service routing", "status": "bringup-required-candidate"},
+    {"name": "/etc/services", "reason": "service-name resolution such as http", "status": "bringup-required-candidate"},
+    {"name": "/etc/protocols", "reason": "protocol-name resolution", "status": "bringup-required-candidate"}
+  ]
+}
