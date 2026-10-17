@@ -159,6 +159,56 @@ def main() -> int:
         )
         checks += 4
 
+    # OS-first stdlib substrate: early userspace, /etc, dlopen runtime, kernel.
+    init_source = (ROOT / "src/jetos/init.py").read_text(encoding="utf-8")
+    for filesystem, target in (("devpts", "/dev/pts"), ("tmpfs", "/dev/shm")):
+        check(
+            f'"{filesystem}", "{target}"' in init_source.replace("'", '"'),
+            f"PID 1 mounts {filesystem} on {target}",
+        )
+    check(
+        init_source.index("bring_up_loopback()\n    stdlib_qualified")
+        < init_source.index("run_armed_stdlib_qualification()\n    guest"),
+        "loopback is up before the stdlib suite runs",
+    )
+    check('os.chmod("/tmp", 0o1777)' in init_source, "PID 1 makes /tmp sticky world-writable")
+    checks += 4
+
+    with tempfile.TemporaryDirectory() as temp:
+        rootfs = Path(temp)
+        build.write_etc(rootfs)
+        hosts = (rootfs / "etc/hosts").read_text(encoding="utf-8")
+        passwd = (rootfs / "etc/passwd").read_text(encoding="utf-8")
+        group = (rootfs / "etc/group").read_text(encoding="utf-8")
+        nss = (rootfs / "etc/nsswitch.conf").read_text(encoding="utf-8")
+        check("127.0.0.1\tlocalhost" in hosts, "/etc/hosts resolves localhost")
+        check(passwd.startswith("root:x:0:0:"), "/etc/passwd has root")
+        check("tty:x:5:" in group, "/etc/group has tty gid 5 for devpts")
+        check("hosts: files" in nss, "nsswitch consults /etc/hosts")
+        check((rootfs / "root").is_dir(), "root home exists")
+        checks += 5
+
+    with tempfile.TemporaryDirectory() as temp:
+        libdir = Path(temp) / "lib"
+        libdir.mkdir()
+        libc = libdir / "libc.so.6"
+        libc.write_bytes(b"libc")
+        (libdir / "libgcc_s.so.1").write_bytes(b"gcc_s")
+        rootfs = Path(temp) / "rootfs"
+        copied = build.collect_dlopen_runtime([libc], rootfs)
+        check(copied == [libdir / "libgcc_s.so.1"], "libgcc_s found beside libc")
+        check(
+            (rootfs / (libdir / "libgcc_s.so.1").relative_to("/")).read_bytes() == b"gcc_s",
+            "libgcc_s copied into guest at the same path",
+        )
+        checks += 2
+
+    for arch in ("x86_64", "arm64"):
+        wanted = build.kernel_requirements(arch)
+        for key in ("CONFIG_UNIX98_PTYS", "CONFIG_SHMEM", "CONFIG_INET", "CONFIG_FUTEX", "CONFIG_EPOLL"):
+            check(wanted.get(key) == "y", f"{arch} kernel profile pins {key}")
+            checks += 1
+
     print(
         "JETOS bootstrap tooling: "
         f"{checks} checks passed"
