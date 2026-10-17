@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+import tempfile
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -55,23 +56,22 @@ def main() -> int:
 
     fake_build = mock.Mock()
     fake_build.initramfs_vm_memory.return_value = "1024M"
-    with mock.patch.object(gate.KERNEL, "is_file", return_value=True), \
-         mock.patch.object(gate.INITRAMFS, "is_file", return_value=True), \
-         mock.patch.object(gate.shutil, "which", return_value="/usr/bin/qemu-system-aarch64"), \
-         mock.patch.object(gate.common, "load_build_tool", return_value=fake_build), \
-         mock.patch.object(gate.common, "kvm_usable", return_value=True):
-        command = gate.qemu_command()
-        assert command[command.index("-accel") + 1] == "kvm"
-        assert command[command.index("-cpu") + 1] == "host"
-
-    with mock.patch.object(gate.KERNEL, "is_file", return_value=True), \
-         mock.patch.object(gate.INITRAMFS, "is_file", return_value=True), \
-         mock.patch.object(gate.shutil, "which", return_value="/usr/bin/qemu-system-aarch64"), \
-         mock.patch.object(gate.common, "load_build_tool", return_value=fake_build), \
-         mock.patch.object(gate.common, "kvm_usable", return_value=False):
-        command = gate.qemu_command()
-        assert command[command.index("-accel") + 1] == "tcg"
-        assert command[command.index("-cpu") + 1] == "max"
+    # Path instances are immutable (__slots__), so point the
+    # gate at real artifact files instead of patching Path.is_file.
+    with tempfile.TemporaryDirectory() as temp:
+        kernel = Path(temp) / "Image"
+        initramfs = Path(temp) / "jetos-initramfs.cpio.gz"
+        kernel.touch()
+        initramfs.touch()
+        for kvm, accel, cpu in ((True, "kvm", "host"), (False, "tcg", "max")):
+            with mock.patch.object(gate, "KERNEL", kernel), \
+                 mock.patch.object(gate, "INITRAMFS", initramfs), \
+                 mock.patch.object(gate.shutil, "which", return_value="/usr/bin/qemu-system-aarch64"), \
+                 mock.patch.object(gate.common, "load_build_tool", return_value=fake_build), \
+                 mock.patch.object(gate.common, "kvm_usable", return_value=kvm):
+                command = gate.qemu_command()
+                assert command[command.index("-accel") + 1] == accel
+                assert command[command.index("-cpu") + 1] == cpu
 
     print("JETOS M1 Green Gate contract: PASS")
     return 0
