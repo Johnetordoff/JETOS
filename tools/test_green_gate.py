@@ -21,6 +21,9 @@ def main() -> int:
     assert '[sys.executable, "tools/dev.py", "build"]' in gate
     assert 'evidence["status"] = "PASS"' in gate
     assert 'marker_seen' in gate
+    build_failed = gate.index('raise RuntimeError("fresh JetLang/kernel/Fat build failed")')
+    guest_boot = gate.index("command = qemu_command()")
+    assert "write_evidence(evidence_path, evidence)" in gate[build_failed:guest_boot]
 
     marker_index = init.index("print(GREEN_GATE_MARKER, flush=True)")
     stdlib_index = init.index("stdlib_qualified = run_armed_stdlib_qualification()")
