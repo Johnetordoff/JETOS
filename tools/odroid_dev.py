@@ -30,13 +30,17 @@ ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT / ".build"
 ODROID_ROOTFS = BUILD / "odroid-hc1-rootfs"
 ODROID_INITRAMFS = BUILD / "odroid-hc1-qualification.cpio.gz"
+ODROID_CONSOLE_LOG = BUILD / "odroid-hc1-console.log"
 ARMV7_ALIASES = frozenset({"armv7l", "armv7", "armhf"})
 ODROID_MODEL_PATHS = (
     Path("/proc/device-tree/model"),
     Path("/sys/firmware/devicetree/base/model"),
 )
+HC1_MIN_GUEST_MIB = 1024
+HC1_MAX_GUEST_MIB = 1280
 ARMV7_KERNEL_CONFIG = {
     "CONFIG_ARM": "y",
+    "CONFIG_CPU_V7": "y",
     "CONFIG_AEABI": "y",
     "CONFIG_VFP": "y",
     "CONFIG_BINFMT_ELF": "y",
@@ -206,11 +210,32 @@ def build_qualification_initramfs(runtime: Path, stdlib: Path) -> Path:
     return ODROID_INITRAMFS
 
 
+def _memory_mib(value: str) -> int:
+    if not value.endswith("M") or not value[:-1].isdigit():
+        raise SystemExit(f"ODROID automatic VM memory must be expressed in MiB, got {value!r}")
+    return int(value[:-1])
+
+
+def hc1_guest_memory(initramfs: Path) -> str:
+    calculated = build.initramfs_vm_memory(initramfs)
+    needed = _memory_mib(calculated)
+    if needed > HC1_MAX_GUEST_MIB:
+        raise SystemExit(
+            "ODROID qualification image exceeds the HC1-safe VM RAM budget: "
+            f"needs {needed} MiB, maximum is {HC1_MAX_GUEST_MIB} MiB. "
+            "Reduce the qualification image instead of overcommitting the 2 GiB host."
+        )
+    chosen = max(needed, HC1_MIN_GUEST_MIB)
+    return f"{chosen}M"
+
+
 def qemu_command(kernel: Path, initramfs: Path, memory: str) -> list[str]:
     qemu = shutil.which("qemu-system-arm")
     if not qemu:
         raise SystemExit("qemu-system-arm is required on the ODROID host")
-    accel = "kvm" if Path("/dev/kvm").exists() else "tcg"
+    kvm = Path("/dev/kvm").exists()
+    accel = "kvm" if kvm else "tcg"
+    cpu = "host" if kvm else "cortex-a15"
     return [
         qemu,
         "-accel",
@@ -218,7 +243,7 @@ def qemu_command(kernel: Path, initramfs: Path, memory: str) -> list[str]:
         "-machine",
         "virt",
         "-cpu",
-        "cortex-a15",
+        cpu,
         "-m",
         memory,
         "-kernel",
@@ -254,6 +279,7 @@ def qualify_vm(
 ) -> None:
     command = qemu_command(kernel, initramfs, memory)
     print("+", " ".join(command), flush=True)
+    ODROID_CONSOLE_LOG.parent.mkdir(parents=True, exist_ok=True)
     process = subprocess.Popen(
         command,
         cwd=ROOT,
@@ -268,37 +294,48 @@ def qualify_vm(
     deadline = time.monotonic() + timeout
     stdlib_passed = False
     guest_passed = False
-    try:
-        while time.monotonic() < deadline:
-            if process.poll() is not None:
-                raise SystemExit(
-                    "JetOS ARMv7 VM exited before qualification completed "
-                    f"(status {process.returncode})"
-                )
-            events = selector.select(timeout=1.0)
-            if not events:
-                continue
-            line = process.stdout.readline()
-            if not line:
-                continue
-            print(line, end="", flush=True)
-            if "JETOS_STDLIB_QUALIFICATION=FAIL" in line:
-                raise SystemExit("JetLang standard-library tests failed inside JetOS")
-            if "JETOS_GUEST_QUALIFICATION=FAIL" in line:
-                raise SystemExit("JetOS guest runtime qualification failed")
-            if "JETOS_STDLIB_QUALIFICATION=PASS" in line:
-                stdlib_passed = True
-            if "JETOS_GUEST_QUALIFICATION=PASS" in line:
-                guest_passed = True
-            if stdlib_passed and guest_passed:
-                print("ODROID_HC1_JETLANG_STDLIB_ON_JETOS=PASS", flush=True)
-                return
-        raise SystemExit(
-            "timed out before JetLang stdlib + JetOS guest qualification completed"
-        )
-    finally:
-        selector.close()
-        stop_process(process)
+    with ODROID_CONSOLE_LOG.open("w", encoding="utf-8") as log:
+        try:
+            while time.monotonic() < deadline:
+                if process.poll() is not None:
+                    raise SystemExit(
+                        "JetOS ARMv7 VM exited before qualification completed "
+                        f"(status {process.returncode}); console: {ODROID_CONSOLE_LOG}"
+                    )
+                events = selector.select(timeout=1.0)
+                if not events:
+                    continue
+                line = process.stdout.readline()
+                if not line:
+                    continue
+                print(line, end="", flush=True)
+                log.write(line)
+                log.flush()
+                if "JETOS_STDLIB_QUALIFICATION=FAIL" in line:
+                    raise SystemExit(
+                        "JetLang standard-library tests failed inside JetOS; "
+                        f"console: {ODROID_CONSOLE_LOG}"
+                    )
+                if "JETOS_GUEST_QUALIFICATION=FAIL" in line:
+                    raise SystemExit(
+                        "JetOS guest runtime qualification failed; "
+                        f"console: {ODROID_CONSOLE_LOG}"
+                    )
+                if "JETOS_STDLIB_QUALIFICATION=PASS" in line:
+                    stdlib_passed = True
+                if "JETOS_GUEST_QUALIFICATION=PASS" in line:
+                    guest_passed = True
+                if stdlib_passed and guest_passed:
+                    print("ODROID_HC1_JETLANG_STDLIB_ON_JETOS=PASS", flush=True)
+                    log.write("ODROID_HC1_JETLANG_STDLIB_ON_JETOS=PASS\n")
+                    return
+            raise SystemExit(
+                "timed out before JetLang stdlib + JetOS guest qualification completed; "
+                f"console: {ODROID_CONSOLE_LOG}"
+            )
+        finally:
+            selector.close()
+            stop_process(process)
 
 
 def build_all(*, allow_generic_armv7: bool = False) -> tuple[Path, Path, Path]:
@@ -353,7 +390,7 @@ def main() -> int:
         )
         memory = args.memory
         if memory == "auto":
-            memory = build.initramfs_vm_memory(initramfs)
+            memory = hc1_guest_memory(initramfs)
             print(f"ODROID JetOS VM memory: {memory}")
         qualify_vm(
             image,
