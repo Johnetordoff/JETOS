@@ -60,9 +60,25 @@ Speech and AI are intended to converge on one low-latency streaming control path
 
 The architecture should preserve strong support for audio capture, asynchronous/pollable I/O, networking, hardware/accelerator discovery, cgroups/resource accounting, storage integrity, streaming/cancellation semantics, and target-neutral JetLang APIs. These capabilities should remain available across `x86_64`, `armv7`, and `arm64` while permitting target-specific acceleration only at real native boundaries.
 
-## Fat and Skinny
+## Fat, Transition, and Skinny
 
-Fat Mode contains the source/build/diagnostic/qualification environment. Skinny Mode is a target-specific qualified runtime projection and must not accidentally include complete Linux/CPython source trees, temporary development material, test bulk, or external bootstrap machinery.
+JetOS uses one source estate and one operating system, but promotion deliberately crosses three operational environments:
+
+1. **Fat Development Environment** — the full source/build/debug/qualification workshop;
+2. **Transition Environment** — a compact target-specific pre-runtime that retains only enough qualification and diagnosis to prove the production projection after development bulk is removed;
+3. **Skinny Production Environment** — the final promoted target runtime.
+
+Fat may contain complete Linux/JetLang source trees, toolchains, exhaustive tests, diagnostics, inventories, benchmarks, and temporary development material. It is not the production footprint.
+
+Transition uses the exact candidate production kernel, JetLang runtime, supported standard library, native runtime dependencies, target configuration, and device responsibilities, plus a small intentional qualification/diagnostic layer. It omits complete source worktrees and general build machinery. Failures found here go back to Fat source for repair; Transition is never an authoritative source fork.
+
+Skinny contains only promoted runtime responsibilities plus compact provenance and any production self-checks that have a real continuing operational purpose. It must not accidentally inherit complete source trees, host/container bootstrap machinery, development compilers, or broad qualification bulk.
+
+The canonical promotion path is:
+
+**Fat source/development → integrated exhaustive qualification → Transition candidate → target qualification → Skinny production image → production/physical qualification.**
+
+See `SKINNY_MODE.md` for the detailed reduction and promotion contract.
 
 ## Architecture-specific boundaries
 
