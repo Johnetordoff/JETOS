@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 from pathlib import Path
 import tempfile
 
@@ -38,6 +39,8 @@ def main() -> int:
 
     original_which = odroid.shutil.which
     original_exists = odroid.Path.exists
+    original_cross = os.environ.pop("CROSS_COMPILE", None)
+    original_memory = odroid.build.initramfs_vm_memory
     try:
         odroid.shutil.which = lambda name: f"/usr/bin/{name}"
         cross = odroid.kernel_make_prefix(machine="x86_64")
@@ -54,7 +57,7 @@ def main() -> int:
         command = odroid.qemu_command(Path("zImage"), Path("initramfs.cpio.gz"), "1024M")
         check(command[0].endswith("qemu-system-arm"), "ODROID VM uses 32-bit ARM QEMU")
         check(command[command.index("-machine") + 1] == "virt", "ODROID VM uses ARM virt machine")
-        check(command[command.index("-cpu") + 1] == "cortex-a15", "ODROID VM uses ARMv7 CPU")
+        check(command[command.index("-cpu") + 1] == "cortex-a15", "TCG uses an ARMv7 CPU model")
         check(command[command.index("-accel") + 1] == "tcg", "portable fallback is TCG")
         check(
             command[command.index("-append") + 1]
@@ -62,9 +65,40 @@ def main() -> int:
             "ODROID VM serial/PID1 boot contract",
         )
         checks += 5
+
+        odroid.Path.exists = (
+            lambda self: True if str(self) == "/dev/kvm" else original_exists(self)
+        )
+        command = odroid.qemu_command(Path("zImage"), Path("initramfs.cpio.gz"), "1024M")
+        check(command[command.index("-accel") + 1] == "kvm", "HC1 KVM is used when available")
+        check(command[command.index("-cpu") + 1] == "host", "KVM uses the physical ARM CPU")
+        checks += 2
+
+        odroid.build.initramfs_vm_memory = lambda _: "512M"
+        check(
+            odroid.hc1_guest_memory(Path("image")) == "1024M",
+            "HC1 VM keeps enough runtime headroom for the stdlib suite",
+        )
+        checks += 1
+        odroid.build.initramfs_vm_memory = lambda _: "1280M"
+        check(
+            odroid.hc1_guest_memory(Path("image")) == "1280M",
+            "HC1 VM accepts the maximum safe guest budget",
+        )
+        checks += 1
+        odroid.build.initramfs_vm_memory = lambda _: "1536M"
+        try:
+            odroid.hc1_guest_memory(Path("image"))
+        except SystemExit:
+            checks += 1
+        else:
+            raise AssertionError("oversized HC1 qualification image must fail closed")
     finally:
         odroid.shutil.which = original_which
         odroid.Path.exists = original_exists
+        odroid.build.initramfs_vm_memory = original_memory
+        if original_cross is not None:
+            os.environ["CROSS_COMPILE"] = original_cross
 
     with tempfile.TemporaryDirectory() as temporary:
         config = Path(temporary) / ".config"
