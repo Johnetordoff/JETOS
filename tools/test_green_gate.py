@@ -34,6 +34,9 @@ def main() -> int:
     assert '[sys.executable, "tools/dev.py", "build"]' in gate_text
     assert 'evidence["status"] = "PASS"' in gate_text
     assert 'marker_seen' in gate_text
+    build_failed = gate_text.index('raise RuntimeError("fresh JetLang/kernel/Fat build failed")')
+    guest_boot = gate_text.index("command = qemu_command()")
+    assert "write_evidence(evidence_path, evidence)" in gate_text[build_failed:guest_boot]
 
     gate = load_gate()
     with mock.patch.dict(os.environ, {"CC": "ccache gcc -m64"}, clear=False), \

@@ -126,6 +126,9 @@ def run_gate(*, evidence_path: Path, build_timeout: int, boot_timeout: int) -> i
         }
         if build_timeout_hit or build_rc != 0:
             raise RuntimeError("fresh arm64 JetLang/kernel/Fat build failed")
+        # tools/dev.py clears .build on a fresh revision, which removes the
+        # RUNNING record written above. Re-record before the long guest stage.
+        common.write_evidence(evidence_path, evidence)
 
         command = qemu_command()
         boot_rc, marker_seen, boot_tail, boot_timeout_hit = common.run_stream(
