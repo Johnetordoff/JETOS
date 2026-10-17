@@ -213,6 +213,19 @@ ETC_FILES = {
     "etc/group": "root:x:0:\ntty:x:5:\nnogroup:x:65534:\n",
     "etc/hosts": "127.0.0.1\tlocalhost\n::1\tlocalhost ip6-localhost ip6-loopback\n",
     "etc/nsswitch.conf": "passwd: files\ngroup: files\nshadow: files\nhosts: files dns\nnetworks: files\nprotocols: files\nservices: files\n",
+    # IANA-assigned names consulted through nsswitch "services"/"protocols":
+    # getaddrinfo(host, "http"), getservbyname() and getprotobyname().
+    "etc/services": (
+        "echo\t\t7/tcp\necho\t\t7/udp\ndiscard\t\t9/tcp\ndiscard\t\t9/udp\n"
+        "daytime\t\t13/tcp\ndaytime\t\t13/udp\nqotd\t\t17/tcp\n"
+        "ftp\t\t21/tcp\nssh\t\t22/tcp\ntelnet\t\t23/tcp\nsmtp\t\t25/tcp\n"
+        "domain\t\t53/tcp\ndomain\t\t53/udp\nhttp\t\t80/tcp\t\twww\n"
+        "pop3\t\t110/tcp\nntp\t\t123/udp\nimap\t\t143/tcp\nhttps\t\t443/tcp\nhttps\t\t443/udp\n"
+    ),
+    "etc/protocols": (
+        "ip\t0\tIP\nicmp\t1\tICMP\ntcp\t6\tTCP\nudp\t17\tUDP\n"
+        "ipv6\t41\tIPv6\nipv6-icmp\t58\tIPv6-ICMP\n"
+    ),
 }
 
 
