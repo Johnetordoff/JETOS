@@ -58,6 +58,19 @@ def compiler_command() -> tuple[list[str], str]:
     return [resolved, *command[1:]], value
 
 
+def kvm_usable(path: Path = Path("/dev/kvm")) -> bool:
+    """Return whether this process can actually open KVM, not merely see it."""
+    if not path.exists():
+        return False
+    try:
+        fd = os.open(path, os.O_RDWR)
+    except OSError:
+        return False
+    else:
+        os.close(fd)
+        return True
+
+
 def preflight() -> dict[str, object]:
     if platform.system() != "Linux":
         raise RuntimeError(f"Green Gate requires Linux execution; got {platform.system()}")
@@ -75,7 +88,7 @@ def preflight() -> dict[str, object]:
     return {
         "system": platform.system(), "machine": machine, "python": platform.python_version(),
         "tools": tools, "compiler": compiler, "configured_cc": configured_cc,
-        "kvm": Path("/dev/kvm").exists(),
+        "kvm": kvm_usable(),
     }
 
 
@@ -151,7 +164,7 @@ def qemu_command() -> list[str]:
         raise RuntimeError("qemu-system-x86_64 disappeared after preflight")
     build_tool = load_build_tool()
     memory = build_tool.initramfs_vm_memory(INITRAMFS)
-    accel = "kvm" if Path("/dev/kvm").exists() else "tcg"
+    accel = "kvm" if kvm_usable() else "tcg"
     return [qemu, "-accel", accel, "-m", memory, "-kernel", str(KERNEL), "-initrd", str(INITRAMFS),
             "-append", "console=ttyS0 rdinit=/init panic=-1", "-nic", "none", "-nographic", "-no-reboot"]
 
