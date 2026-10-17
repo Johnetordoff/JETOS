@@ -168,6 +168,13 @@ def main() -> int:
     sub.add_parser("docker-test", help="run optional container qualification using a caller-supplied bootstrap image")
     dev = sub.add_parser("dev", help="build/boot through the optional Docker/QEMU harness")
     dev.add_argument("--build-only", action="store_true")
+    odroid = sub.add_parser(
+        "odroid",
+        help="on an ARMv7 ODROID host, build JetLang + JetOS and run stdlib tests inside JetOS",
+    )
+    odroid.add_argument("--allow-generic-armv7", action="store_true")
+    odroid.add_argument("--memory", default="auto")
+    odroid.add_argument("--timeout", type=int, default=4 * 60 * 60)
     work_server = sub.add_parser("work-server", help="run the persistent self-hosted JETOS build/test/improvement server")
     work_server.add_argument("--host", default="127.0.0.1")
     work_server.add_argument("--port", type=int, default=8787)
@@ -194,6 +201,16 @@ def main() -> int:
     elif args.command == "dev":
         ensure_dev_sources()
         docker_dev(args.build_only)
+    elif args.command == "odroid":
+        ensure_dev_sources()
+        forwarded = [
+            "qualify",
+            "--memory", args.memory,
+            "--timeout", str(args.timeout),
+        ]
+        if args.allow_generic_armv7:
+            forwarded.append("--allow-generic-armv7")
+        python_tool("odroid_dev.py", forwarded)
     elif args.command == "work-server":
         python_tool("work_server.py", ["serve", "--host", args.host, "--port", str(args.port)])
     elif args.command == "work-cycle":

@@ -82,6 +82,7 @@ def main() -> int:
         "Temporary Bullshit",
     )
     run(sys.executable, "tools/test_architectures.py")
+    run(sys.executable, "tools/test_odroid_dev.py")
     run(sys.executable, "tools/test_package.py")
     run(sys.executable, "tools/test_source.py")
     run(sys.executable, "tools/test_source_inventory.py")
