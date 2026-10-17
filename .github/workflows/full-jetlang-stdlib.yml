@@ -10,10 +10,13 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     steps:
-      - name: Check out JetOS and pinned source trees
+      - name: Check out JetOS
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: false
+
+      - name: Fetch only pinned JetLang source
+        run: git submodule update --init source/cpython
 
       - name: Install build dependencies
         run: |
