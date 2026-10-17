@@ -17,6 +17,19 @@ Before changing JetOS, read `MANDATE.md`, `ARCHITECTURE.md`, `README.md`, `ODROI
 - Treat `Documentation/FUTURE_AI_SPEECH_TORRENT.md` as the long-horizon design direction for AI-native support, speech-to-text/speech-to-command, and torrent/distributed-content services. Preserve its distinction between future architecture and implemented behavior, and prefer JetLang orchestration over premature kernel policy.
 - Keep the active tree small. Evidence-confirmed unused project-owned code should be removed rather than archived inside the live source tree.
 
+## Active development order
+
+Until the owner explicitly changes it, engineering effort follows this order:
+
+1. **Finish the Linux x86_64 Green Gate.** Build a new JetLang, new JetOS kernel, and new Fat qualification image from one exact revision; boot them together; run the complete required repository + CPython-derived standard-library regression surface; repair the first concrete failure; repeat until there are zero actual failures and every required test is accounted for.
+2. **Immediately after Green, absorb the exact pinned Linux and CPython/JetLang trees into the outer JETOS repository.** Use `tools/absorb_source.py`; preserve the current exact gitlink revisions, provenance, licenses, symlinks, and bytes; remove nested Git metadata and `.gitmodules`; do not update either upstream while performing the absorption.
+3. **Preserve Docker as a current build/test harness, not an OS dependency.** Docker is acceptable because it is widely available today. Keep the build interface simple enough that equivalent OCI-style runners such as Podman can be supported later without changing JetOS runtime architecture. Container tooling must consume a prepared external bootstrap/tooling image and must never define the JetOS kernel or JetLang runtime.
+4. **Keep phone/LAN demo work off the active path.** Do not spend engineering time on the prior phone demo unless the owner explicitly reactivates it.
+5. **After Green + source absorption, qualify execution architecture deliberately.** Record host/guest ISA, CPU feature set, ABI, register-width assumptions, interpreter build target, and each active interpreter/subinterpreter's execution architecture. Do not infer Intel/x86_64 behavior from Apple-Silicon/arm64 or vice versa. Multiple subinterpreters must remain valid even when runtime work is scheduled across different supported execution contexts.
+6. **Then continue medium-high portability/runtime work:** ARMv7/ODROID-HC1 canonical support and physical proof, plus controlled integration from the Python 3.15 upstream change stream into the existing JetLang-owned tree.
+
+The compact OS qualification baseline remains useful but is not a reason to interrupt an active Green-Gate failure loop. Fat/Skinny/transition architecture documentation may be refined without displacing Green qualification work.
+
 ## Qualification priority — Linux x86_64 first
 
 This ordering is mandatory for JetOS engineering and qualification work until explicitly superseded by the owner.
