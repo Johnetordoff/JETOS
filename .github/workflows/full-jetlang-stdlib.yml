@@ -42,7 +42,9 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          .build/jetlang-build/python -I tools/stdlib_qualify.py \
+          cp tools/stdlib_qualify.py .build/stdlib_qualify_parallel.py
+          sed -i 's/"-j1"/"-j2"/' .build/stdlib_qualify_parallel.py
+          .build/jetlang-build/python -I .build/stdlib_qualify_parallel.py \
             --strict --full \
             --manifest .build/jetlang-stdlib-full.json \
             2>&1 | tee .build/jetlang-stdlib-full.log
