@@ -45,7 +45,7 @@ jobs:
           trap cleanup EXIT
 
           sudo chroot "$ROOT" /bin/bash -lc 'dpkg --print-architecture; uname -m; test "$(dpkg --print-architecture)" = armhf'
-          sudo chroot "$ROOT" /bin/bash -lc 'apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y python3 build-essential pkg-config libssl-dev libffi-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev liblzma-dev libgdbm-dev libgdbm-compat-dev tk-dev uuid-dev xz-utils libncurses-dev libexpat1-dev ca-certificates file'
+          sudo chroot "$ROOT" /bin/bash -lc 'apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y python3 build-essential pkg-config libssl-dev libffi-dev zlib1g-dev libzstd-dev libbz2-dev libreadline-dev libsqlite3-dev liblzma-dev libgdbm-dev libgdbm-compat-dev tk-dev uuid-dev xz-utils libncurses-dev libexpat1-dev ca-certificates file'
 
           sudo mkdir -p "$ROOT/work/JETOS"
           tar --exclude=.git --exclude=.build -cf - . | sudo tar -C "$ROOT/work/JETOS" -xf -
