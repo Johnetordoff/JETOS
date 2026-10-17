@@ -29,6 +29,9 @@ def main() -> int:
     assert '[sys.executable, "tools/dev.py", "build"]' in text
     assert 'GREEN_MARKER = "JETOS_GREEN_GATE_PREPROMPT=PASS"' in text
     assert 'shutil.rmtree(BUILD)' in text
+    build_failed = text.index('raise RuntimeError("fresh arm64 JetLang/kernel/Fat build failed")')
+    guest_boot = text.index("command = qemu_command()")
+    assert "write_evidence(evidence_path, evidence)" in text[build_failed:guest_boot]
 
     gate = load_gate()
     with mock.patch.object(gate.platform, "system", return_value="Linux"), \
