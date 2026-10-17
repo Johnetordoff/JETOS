@@ -8,6 +8,8 @@ import platform
 import subprocess
 import sys
 
+GREEN_GATE_MARKER = "JETOS_GREEN_GATE_PREPROMPT=PASS"
+
 libc = ctypes.CDLL(None, use_errno=True)
 libc.mount.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_ulong, ctypes.c_char_p]
 libc.mount.restype = ctypes.c_int
@@ -88,8 +90,12 @@ def main() -> None:
     print("Unicode: supported", flush=True)
     print("encoding: UTF-8", flush=True)
     print("network: OFF (VM has no virtual NIC; loopback may be qualified locally)", flush=True)
-    run_armed_stdlib_qualification()
-    run_armed_guest_qualification()
+    stdlib_qualified = run_armed_stdlib_qualification()
+    guest_qualified = run_armed_guest_qualification()
+    if stdlib_qualified and guest_qualified:
+        # This is the machine-readable Green Gate handoff point. It is emitted
+        # only after the armed full stdlib/CPython and guest/runtime gates pass.
+        print(GREEN_GATE_MARKER, flush=True)
     print("shell: JETOS language interpreter", flush=True)
     print("", flush=True)
     os.execv(sys.executable, [sys.executable, "-S", "-i"])
