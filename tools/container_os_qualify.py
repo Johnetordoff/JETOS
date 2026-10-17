@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Qualify the JETOS userspace as an operating-system environment in Docker.
+"""Qualify the optional external Docker build/test harness.
 
-Docker isolates the JETOS userspace but shares the host Linux kernel.  This
-script therefore tests the userspace/kernel contract honestly: JETOS owns the
-container userspace under test, while Linux remains the imported kernel
-substrate for Gen 2.
+Docker is currently a convenient isolation mechanism for JetOS development, but
+the container is not the JetOS runtime. Its Linux userspace, kernel, Python
+interpreter, compiler, and other tools are external bootstrap machinery only.
+The JetOS kernel and JetLang runtime are built later from source/linux and
+source/cpython and are qualified together in the guest.
 """
 from __future__ import annotations
 
@@ -23,7 +24,10 @@ import sys
 import tempfile
 from multiprocessing import shared_memory
 
-EXPECTED_PYTHON = (3, 14, 8)
+# This is only the minimum interpreter needed to execute repository-owned build
+# tooling. It is deliberately NOT tied to the JetLang compatibility baseline.
+# JetLang's required version is enforced on the source-built runtime instead.
+MIN_BOOTSTRAP_PYTHON = (3, 10)
 
 TOOL_CAPABILITIES = {
     "c_compiler": os.environ.get("CC", "cc"),
@@ -50,10 +54,12 @@ def command_identity(command: str) -> dict[str, str]:
     ]
     if not executables:
         raise AssertionError(f"required capability executable not found: {command}")
+    path: str | None = None
     for executable in executables:
         path = shutil.which(executable)
         if path is None:
             raise AssertionError(f"required capability executable not found: {executable}")
+    assert path is not None
     result = subprocess.run(
         [path, "--version"],
         text=True,
@@ -71,12 +77,16 @@ def command_identity(command: str) -> dict[str, str]:
 def qualify_os_behavior(phase: str) -> dict[str, object]:
     if os.environ.get("JETOS_CONTAINER") != "1":
         raise AssertionError("JETOS_CONTAINER=1 is required for Docker qualification")
-    if sys.version_info[:3] != EXPECTED_PYTHON:
+    if sys.version_info[:2] < MIN_BOOTSTRAP_PYTHON:
+        minimum = ".".join(str(part) for part in MIN_BOOTSTRAP_PYTHON)
         raise AssertionError(
-            f"expected Python {EXPECTED_PYTHON}, got {sys.version_info[:3]}"
+            f"bootstrap Python >= {minimum} is required to run JetOS build tooling; "
+            f"got {platform.python_version()}"
         )
     if platform.system() != "Linux":
-        raise AssertionError(f"Docker JETOS Gen 2 requires Linux, got {platform.system()}")
+        raise AssertionError(
+            f"JetOS Docker harness requires a Linux container, got {platform.system()}"
+        )
 
     required_paths = (
         Path("/proc/self/status"),
@@ -144,9 +154,10 @@ def qualify_os_behavior(phase: str) -> dict[str, object]:
 
     return {
         "phase": phase,
-        "userspace": "JETOS",
-        "kernel_model": "shared host Linux kernel",
+        "environment": "external JetOS build/test harness",
+        "kernel_model": "external container Linux kernel",
         "python": platform.python_version(),
+        "python_role": "bootstrap-only",
         "machine": platform.machine(),
         "pid": os.getpid(),
         "filesystem": "pass",
@@ -182,8 +193,8 @@ def main() -> int:
         os_report = report["os"]
         assert isinstance(os_report, dict)
         print(
-            "JETOS Docker OS qualification: PASS "
-            f"phase={args.phase} python={os_report['python']} "
+            "JETOS Docker harness qualification: PASS "
+            f"phase={args.phase} bootstrap-python={os_report['python']} "
             f"machine={os_report['machine']} kernel={os_report['kernel_model']}"
         )
         capabilities = report.get("capabilities")
