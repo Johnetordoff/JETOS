@@ -2,25 +2,53 @@
 """Contract tests for the canonical issue-96 Green Gate."""
 from __future__ import annotations
 
+import importlib.util
+import os
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def load_gate():
+    path = ROOT / "tools/green_gate.py"
+    spec = importlib.util.spec_from_file_location("jetos_test_green_gate", path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def main() -> int:
-    gate = (ROOT / "tools/green_gate.py").read_text(encoding="utf-8")
+    gate_text = (ROOT / "tools/green_gate.py").read_text(encoding="utf-8")
     init = (ROOT / "src/jetos/init.py").read_text(encoding="utf-8")
     entrypoint = (ROOT / "jetos.py").read_text(encoding="utf-8")
 
-    assert 'GREEN_MARKER = "JETOS_GREEN_GATE_PREPROMPT=PASS"' in gate
-    assert '"qemu-system-x86_64"' in gate
-    assert '"qemu-system-arm"' not in gate
-    assert '"qemu-system-aarch64"' not in gate
-    assert 'shutil.rmtree(BUILD)' in gate
-    assert '[sys.executable, "jetos.py", "test"]' in gate
-    assert '[sys.executable, "tools/dev.py", "build"]' in gate
-    assert 'evidence["status"] = "PASS"' in gate
-    assert 'marker_seen' in gate
+    assert 'GREEN_MARKER = "JETOS_GREEN_GATE_PREPROMPT=PASS"' in gate_text
+    assert '"qemu-system-x86_64"' in gate_text
+    assert '"qemu-system-arm"' not in gate_text
+    assert '"qemu-system-aarch64"' not in gate_text
+    assert 'shutil.rmtree(BUILD)' in gate_text
+    assert '[sys.executable, "jetos.py", "test"]' in gate_text
+    assert '[sys.executable, "tools/dev.py", "build"]' in gate_text
+    assert 'evidence["status"] = "PASS"' in gate_text
+    assert 'marker_seen' in gate_text
+
+    gate = load_gate()
+    with mock.patch.dict(os.environ, {"CC": "ccache gcc -m64"}, clear=False), \
+         mock.patch.object(gate.shutil, "which", side_effect=lambda name: "/usr/bin/ccache" if name == "ccache" else None):
+        command, configured = gate.compiler_command()
+        assert command == ["/usr/bin/ccache", "gcc", "-m64"]
+        assert configured == "ccache gcc -m64"
+    with mock.patch.dict(os.environ, {"CC": "definitely-missing-jetos-cc"}, clear=False), \
+         mock.patch.object(gate.shutil, "which", return_value=None):
+        try:
+            gate.compiler_command()
+        except RuntimeError as exc:
+            assert "configured C compiler was not found" in str(exc)
+        else:
+            raise AssertionError("missing configured compiler was accepted")
+    assert '"cc"' not in gate_text[gate_text.index("REQUIRED_TOOLS = ("):gate_text.index(")\n\n\ndef utc_now")]
 
     marker_index = init.index("print(GREEN_GATE_MARKER, flush=True)")
     stdlib_index = init.index("stdlib_qualified = run_armed_stdlib_qualification()")
