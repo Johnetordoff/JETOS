@@ -1,11 +1,5 @@
 #!/usr/bin/env python3
-"""Run the canonical Linux x86_64 JetOS Green Gate and emit evidence.
-
-This is the executable contract for issue #96. It does not infer success from
-static checks. A PASS requires a fresh source-built JetLang, fresh source-built
-x86_64 kernel, fresh Fat image, and a QEMU boot that reaches the in-guest Green
-marker emitted only after full stdlib/CPython and guest qualification succeed.
-"""
+"""Run the canonical Linux x86_64 JetOS Green Gate and emit evidence."""
 from __future__ import annotations
 
 import argparse
@@ -17,6 +11,7 @@ import os
 from pathlib import Path
 import platform
 import selectors
+import shlex
 import shutil
 import subprocess
 import sys
@@ -35,15 +30,7 @@ REQUIRED_SOURCES = {
     ROOT / "source/cpython/Python/sysmodule.c": "JetLang/CPython source",
 }
 REQUIRED_TOOLS = (
-    "git",
-    "cc",
-    "ld",
-    "make",
-    "bc",
-    "bison",
-    "flex",
-    "pahole",
-    "pkg-config",
+    "git", "ld", "make", "bc", "bison", "flex", "pahole", "pkg-config",
     "qemu-system-x86_64",
 )
 
@@ -53,14 +40,22 @@ def utc_now() -> str:
 
 
 def revision() -> str:
-    result = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=ROOT,
-        check=True,
-        text=True,
-        capture_output=True,
-    )
+    result = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, check=True, text=True, capture_output=True)
     return result.stdout.strip()
+
+
+def compiler_command() -> tuple[list[str], str]:
+    value = os.environ.get("CC", "cc")
+    try:
+        command = shlex.split(value)
+    except ValueError as exc:
+        raise RuntimeError(f"invalid CC command {value!r}: {exc}") from exc
+    if not command:
+        raise RuntimeError("CC is empty; configure a C compiler command")
+    resolved = shutil.which(command[0])
+    if resolved is None:
+        raise RuntimeError(f"configured C compiler was not found: CC={value!r}")
+    return [resolved, *command[1:]], value
 
 
 def preflight() -> dict[str, object]:
@@ -69,21 +64,17 @@ def preflight() -> dict[str, object]:
     machine = platform.machine().lower()
     if machine not in {"x86_64", "amd64"}:
         raise RuntimeError(f"Green Gate requires x86_64 execution; got {machine}")
-
     missing_sources = [label for path, label in REQUIRED_SOURCES.items() if not path.is_file()]
     if missing_sources:
         raise RuntimeError("missing required source trees: " + ", ".join(missing_sources))
-
     tools = {name: shutil.which(name) for name in REQUIRED_TOOLS}
     missing_tools = [name for name, path in tools.items() if path is None]
     if missing_tools:
         raise RuntimeError("missing Green-Gate host tools: " + ", ".join(missing_tools))
-
+    compiler, configured_cc = compiler_command()
     return {
-        "system": platform.system(),
-        "machine": machine,
-        "python": platform.python_version(),
-        "tools": tools,
+        "system": platform.system(), "machine": machine, "python": platform.python_version(),
+        "tools": tools, "compiler": compiler, "configured_cc": configured_cc,
         "kvm": Path("/dev/kvm").exists(),
     }
 
@@ -93,23 +84,10 @@ def write_evidence(path: Path, evidence: dict[str, object]) -> None:
     path.write_text(json.dumps(evidence, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
-def run_stream(
-    command: list[str],
-    *,
-    timeout: int,
-    marker: str | None = None,
-) -> tuple[int | None, bool, list[str], bool]:
-    """Stream one process, optionally stopping successfully when marker appears."""
+def run_stream(command: list[str], *, timeout: int, marker: str | None = None) -> tuple[int | None, bool, list[str], bool]:
     print("+", " ".join(command), flush=True)
-    process = subprocess.Popen(
-        command,
-        cwd=ROOT,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-    )
+    process = subprocess.Popen(command, cwd=ROOT, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT, text=True, bufsize=1)
     assert process.stdout is not None
     output: deque[str] = deque(maxlen=TAIL_LINES)
     seen = False
@@ -141,7 +119,6 @@ def run_stream(
                 break
     finally:
         selector.close()
-
     if seen or timed_out:
         process.terminate()
         try:
@@ -151,7 +128,6 @@ def run_stream(
             process.wait(timeout=10)
     else:
         process.wait()
-
     return process.returncode, seen, list(output), timed_out
 
 
@@ -176,79 +152,39 @@ def qemu_command() -> list[str]:
     build_tool = load_build_tool()
     memory = build_tool.initramfs_vm_memory(INITRAMFS)
     accel = "kvm" if Path("/dev/kvm").exists() else "tcg"
-    return [
-        qemu,
-        "-accel", accel,
-        "-m", memory,
-        "-kernel", str(KERNEL),
-        "-initrd", str(INITRAMFS),
-        "-append", "console=ttyS0 rdinit=/init panic=-1",
-        "-nic", "none",
-        "-nographic",
-        "-no-reboot",
-    ]
+    return [qemu, "-accel", accel, "-m", memory, "-kernel", str(KERNEL), "-initrd", str(INITRAMFS),
+            "-append", "console=ttyS0 rdinit=/init panic=-1", "-nic", "none", "-nographic", "-no-reboot"]
 
 
 def run_gate(*, evidence_path: Path, build_timeout: int, boot_timeout: int) -> int:
-    evidence: dict[str, object] = {
-        "schema_version": 1,
-        "gate": "linux-x86_64-green",
-        "status": "RUNNING",
-        "started_at": utc_now(),
-        "green_marker": GREEN_MARKER,
-        "stages": {},
-    }
+    evidence: dict[str, object] = {"schema_version": 1, "gate": "linux-x86_64-green", "status": "RUNNING",
+                                  "started_at": utc_now(), "green_marker": GREEN_MARKER, "stages": {}}
     try:
-        # Green requires newly built artifacts on one exact revision, not cache reuse.
         if BUILD.exists():
             shutil.rmtree(BUILD)
         evidence["revision"] = revision()
         evidence["host"] = preflight()
         write_evidence(evidence_path, evidence)
-
-        tests_rc, _, tests_tail, tests_timeout = run_stream(
-            [sys.executable, "jetos.py", "test"], timeout=build_timeout
-        )
-        evidence["stages"]["repository_tests"] = {
-            "returncode": tests_rc,
-            "timed_out": tests_timeout,
-            "tail": tests_tail,
-        }
+        tests_rc, _, tests_tail, tests_timeout = run_stream([sys.executable, "jetos.py", "test"], timeout=build_timeout)
+        evidence["stages"]["repository_tests"] = {"returncode": tests_rc, "timed_out": tests_timeout, "tail": tests_tail}
         if tests_timeout or tests_rc != 0:
             raise RuntimeError("repository-native test stage failed")
-
-        build_rc, _, build_tail, build_timed_out = run_stream(
-            [sys.executable, "tools/dev.py", "build"], timeout=build_timeout
-        )
-        evidence["stages"]["fresh_build"] = {
-            "returncode": build_rc,
-            "timed_out": build_timed_out,
-            "kernel": str(KERNEL.relative_to(ROOT)),
-            "initramfs": str(INITRAMFS.relative_to(ROOT)),
-            "tail": build_tail,
-        }
+        build_rc, _, build_tail, build_timed_out = run_stream([sys.executable, "tools/dev.py", "build"], timeout=build_timeout)
+        evidence["stages"]["fresh_build"] = {"returncode": build_rc, "timed_out": build_timed_out,
+            "kernel": str(KERNEL.relative_to(ROOT)), "initramfs": str(INITRAMFS.relative_to(ROOT)), "tail": build_tail}
         if build_timed_out or build_rc != 0:
             raise RuntimeError("fresh JetLang/kernel/Fat build failed")
-
         command = qemu_command()
-        boot_rc, marker_seen, boot_tail, boot_timed_out = run_stream(
-            command, timeout=boot_timeout, marker=GREEN_MARKER
-        )
-        evidence["stages"]["qemu_guest"] = {
-            "returncode_after_stop": boot_rc,
-            "timed_out": boot_timed_out,
-            "marker_seen": marker_seen,
-            "command": command,
-            "tail": boot_tail,
-        }
+        boot_rc, marker_seen, boot_tail, boot_timed_out = run_stream(command, timeout=boot_timeout, marker=GREEN_MARKER)
+        evidence["stages"]["qemu_guest"] = {"returncode_after_stop": boot_rc, "timed_out": boot_timed_out,
+            "marker_seen": marker_seen, "command": command, "tail": boot_tail}
         if not marker_seen:
             reason = "QEMU boot timed out" if boot_timed_out else "QEMU exited before Green marker"
             raise RuntimeError(reason)
-
         evidence["status"] = "PASS"
         evidence["finished_at"] = utc_now()
         write_evidence(evidence_path, evidence)
-        print(f"{GREEN_MARKER}")
+        print(GREEN_MARKER)
         print(f"Green Gate evidence: {evidence_path}")
         return 0
     except Exception as exc:
@@ -267,11 +203,7 @@ def main() -> int:
     parser.add_argument("--build-timeout", type=int, default=10800)
     parser.add_argument("--boot-timeout", type=int, default=10800)
     args = parser.parse_args()
-    return run_gate(
-        evidence_path=args.evidence,
-        build_timeout=args.build_timeout,
-        boot_timeout=args.boot_timeout,
-    )
+    return run_gate(evidence_path=args.evidence, build_timeout=args.build_timeout, boot_timeout=args.boot_timeout)
 
 
 if __name__ == "__main__":
