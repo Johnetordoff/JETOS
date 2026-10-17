@@ -28,6 +28,14 @@ COMMON_FIRST_BOOT_KERNEL = {
     "CONFIG_SYSFS": "y",
     "CONFIG_TMPFS": "y",
     "CONFIG_UNIX": "y",
+    # Facilities the supported JetLang standard library requires of the OS
+    # (pty/termios, POSIX shm/semaphores, sockets/loopback, threads,
+    # selectors). Pinned so kernel reduction cannot silently drop them.
+    "CONFIG_UNIX98_PTYS": "y",
+    "CONFIG_SHMEM": "y",
+    "CONFIG_INET": "y",
+    "CONFIG_FUTEX": "y",
+    "CONFIG_EPOLL": "y",
 }
 
 ARCH_FIRST_BOOT_KERNEL = {
@@ -166,6 +174,55 @@ def collect_python_runtime(
             continue
     for dependency in dependencies:
         copy_absolute(dependency, rootfs)
+    collect_dlopen_runtime(dependencies, rootfs)
+
+
+# Libraries the C runtime loads with dlopen() at run time, so ldd never
+# reports them. glibc dlopens libgcc_s for pthread_cancel/pthread_exit and
+# unwinding; without it threaded JetLang aborts with
+# "libgcc_s.so.1 must be installed for pthread_exit to work".
+DLOPEN_RUNTIME_LIBRARIES = ("libgcc_s.so.1",)
+
+
+def collect_dlopen_runtime(dependencies: list[Path], rootfs: Path) -> list[Path]:
+    """Copy dlopen-only runtime libraries from the same directory as libc.
+
+    Searching only the directories that already supplied the runtime's
+    ldd-resolved libraries keeps the guest on one ABI/architecture.
+    """
+    directories: list[Path] = []
+    for dependency in dependencies:
+        if dependency.parent not in directories:
+            directories.append(dependency.parent)
+    copied: list[Path] = []
+    for name in DLOPEN_RUNTIME_LIBRARIES:
+        found = next((d / name for d in directories if (d / name).exists()), None)
+        if found is None:
+            print(f"JETOS rootfs WARNING: dlopen runtime library {name} not found beside the runtime's libraries", flush=True)
+            continue
+        copy_absolute(found, rootfs)
+        copied.append(found)
+    return copied
+
+
+# Minimal account/name-service database. CPython's pwd/grp/getpass/
+# os.path.expanduser and socket name resolution of "localhost" read these
+# ordinary Linux files; JETOS provides them instead of patching JetLang.
+ETC_FILES = {
+    "etc/passwd": "root:x:0:0:root:/root:/usr/bin/python3\nnobody:x:65534:65534:nobody:/nonexistent:/bin/false\n",
+    "etc/group": "root:x:0:\ntty:x:5:\nnogroup:x:65534:\n",
+    "etc/hosts": "127.0.0.1\tlocalhost\n::1\tlocalhost ip6-localhost ip6-loopback\n",
+    "etc/nsswitch.conf": "passwd: files\ngroup: files\nshadow: files\nhosts: files dns\nnetworks: files\nprotocols: files\nservices: files\n",
+}
+
+
+def write_etc(rootfs: Path) -> None:
+    for relative, content in ETC_FILES.items():
+        path = rootfs / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+        path.chmod(0o644)
+    (rootfs / "root").mkdir(mode=0o700, exist_ok=True)
 
 
 def copy_jetos(rootfs: Path) -> None:
@@ -217,6 +274,8 @@ def make_rootfs(
             parents=True,
             exist_ok=True,
         )
+    (destination / "tmp").chmod(0o1777)
+    write_etc(destination)
     collect_python_runtime(python, stdlib, destination)
     copy_jetos(destination)
 
