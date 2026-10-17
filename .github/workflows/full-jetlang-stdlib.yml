@@ -1,0 +1,55 @@
+name: Full JetLang standard library qualification
+
+on:
+  push:
+    branches:
+      - test/full-jetlang-stdlib-20261016
+
+jobs:
+  full-stdlib:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Check out JetOS and pinned source trees
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            build-essential pkg-config libssl-dev libffi-dev zlib1g-dev \
+            libbz2-dev libreadline-dev libsqlite3-dev liblzma-dev \
+            libgdbm-dev libgdbm-compat-dev tk-dev uuid-dev xz-utils \
+            libncurses-dev libexpat1-dev
+
+      - name: Build fresh JetLang from pinned CPython source
+        run: |
+          rm -rf .build/jetlang-src .build/jetlang-build .build/jetlang-install
+          mkdir -p .build
+          cp -a source/cpython .build/jetlang-src
+          python3 tools/language.py patch .build/jetlang-src
+          python3 tools/language.py build .build/jetlang-src \
+            --build .build/jetlang-build \
+            --prefix .build/jetlang-install
+          python3 tools/language.py smoke --build .build/jetlang-build
+
+      - name: Run complete JetLang stdlib and CPython-derived regression suite
+        shell: bash
+        run: |
+          set -o pipefail
+          .build/jetlang-build/python -I tools/stdlib_qualify.py \
+            --strict --full \
+            --manifest .build/jetlang-stdlib-full.json \
+            2>&1 | tee .build/jetlang-stdlib-full.log
+
+      - name: Publish qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jetlang-stdlib-full-evidence
+          path: |
+            .build/jetlang-stdlib-full.json
+            .build/jetlang-stdlib-full.log
+          if-no-files-found: warn
