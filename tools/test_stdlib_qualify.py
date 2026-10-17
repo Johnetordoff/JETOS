@@ -58,6 +58,12 @@ def main() -> int:
         assert '"_ios_support"' in tool_text
         assert '"_wmi"' in tool_text
         assert "except Exception:" in tool_text
+        # Full regrtest can run for hours on ARMv7. Its output must be streamed
+        # to the guest console so the last test reached survives a hang/failure.
+        assert "subprocess.Popen(" in tool_text
+        assert "stderr=subprocess.STDOUT" in tool_text
+        assert 'print(line,end="",flush=True)' in tool_text
+        assert 'output="".join(lines)' in tool_text
 
     print("JETOS stdlib qualification tooling: PASS")
     return 0
