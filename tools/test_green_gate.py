@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import os
 from pathlib import Path
+import tempfile
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -49,6 +50,24 @@ def main() -> int:
         else:
             raise AssertionError("missing configured compiler was accepted")
     assert '"cc"' not in gate_text[gate_text.index("REQUIRED_TOOLS = ("):gate_text.index(")\n\n\ndef utc_now")]
+
+    # Seeing /dev/kvm is insufficient: containers and restricted users commonly
+    # have the node without permission to open it. Green Gate must use TCG there.
+    with tempfile.TemporaryDirectory() as temp:
+        fake_kvm = Path(temp) / "kvm"
+        fake_kvm.touch()
+        with mock.patch.object(gate.os, "open", side_effect=PermissionError("denied")):
+            assert not gate.kvm_usable(fake_kvm)
+        read_fd, write_fd = os.pipe()
+        os.close(write_fd)
+        try:
+            with mock.patch.object(gate.os, "open", return_value=read_fd):
+                assert gate.kvm_usable(fake_kvm)
+        finally:
+            try:
+                os.close(read_fd)
+            except OSError:
+                pass
 
     marker_index = init.index("print(GREEN_GATE_MARKER, flush=True)")
     stdlib_index = init.index("stdlib_qualified = run_armed_stdlib_qualification()")
