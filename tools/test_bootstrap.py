@@ -185,8 +185,13 @@ def main() -> int:
         check(passwd.startswith("root:x:0:0:"), "/etc/passwd has root")
         check("tty:x:5:" in group, "/etc/group has tty gid 5 for devpts")
         check("hosts: files" in nss, "nsswitch consults /etc/hosts")
+        services = (rootfs / "etc/services").read_text(encoding="utf-8")
+        protocols = (rootfs / "etc/protocols").read_text(encoding="utf-8")
+        check("http\t\t80/tcp" in services, "/etc/services resolves the http service name")
+        check("daytime\t\t13/tcp" in services, "/etc/services has daytime for getservbyname")
+        check("tcp\t6\tTCP" in protocols, "/etc/protocols resolves tcp for getprotobyname")
         check((rootfs / "root").is_dir(), "root home exists")
-        checks += 5
+        checks += 8
 
     with tempfile.TemporaryDirectory() as temp:
         libdir = Path(temp) / "lib"
