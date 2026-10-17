@@ -20,7 +20,7 @@ def main() -> int:
         'return "linux/arm64"',
         'build_command.extend(["--platform", docker_platform])',
         'run_command.extend(["--platform", docker_platform])',
-        '"python", "tools/dev.py", "build" if build_only else "run"',
+        '"python3", "tools/dev.py", "build" if build_only else "run"',
     )
     require(
         "Dockerfile",
@@ -48,7 +48,7 @@ def main() -> int:
     require(
         "src/jetos/startup.py",
         '"jetos> "',
-        '"qualify"',
+        'def qualify(',
     )
     require(
         "tools/guest_qualify.py",
@@ -56,13 +56,17 @@ def main() -> int:
         'tempfile.TemporaryDirectory',
         'subprocess.run',
         'JETOS_ENV_PROBE',
-        'fcntl.ioctl',
+        'configure_loopback()',
         'ThreadingHTTPServer',
         'urllib.request.urlopen',
     )
     require(
+        "src/jetos/network.py",
+        'fcntl.ioctl',
+    )
+    require(
         "tools/stdlib_qualify.py",
-        '"-m", "test"',
+        '"-m","test"',
     )
     print("M1 canonical-path contract: PASS")
     return 0
