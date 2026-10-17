@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import json
 from pathlib import Path
 import shutil
 
@@ -70,6 +71,28 @@ def install_guest_qualification(rootfs: Path) -> Path:
     return target
 
 
+def install_c_api(rootfs: Path, stdlib: Path) -> list[Path]:
+    """Install the JetLang C API the runtime advertises into Fat.
+
+    build-details.json (PEP 739) names the header and pkg-config directories
+    of this exact JetLang build; Fat ships them at those same absolute paths
+    so the installed runtime describes itself truthfully inside the guest.
+    """
+    details_path = stdlib.resolve() / "build-details.json"
+    if not details_path.is_file():
+        raise SystemExit(f"JetLang build-details.json is missing: {details_path}")
+    c_api = json.loads(details_path.read_text(encoding="utf-8"))["c_api"]
+    headers = Path(c_api["headers"])
+    if not (headers / "Python.h").is_file():
+        raise SystemExit(f"JetLang C API headers are missing Python.h: {headers}")
+    installed: list[Path] = []
+    for source in (headers, Path(c_api["pkgconfig_path"])):
+        target = rootfs / source.relative_to("/")
+        shutil.copytree(source, target, symlinks=True, dirs_exist_ok=True)
+        installed.append(target)
+    return installed
+
+
 def strip_temporary_bullshit(rootfs: Path) -> int:
     """Remove development-only Temporary Bullshit from a Skinny rootfs.
 
@@ -119,6 +142,7 @@ def package_rootfs(
         installed = copy_linux_source(linux_source, rootfs)
         install_stdlib_qualification(rootfs, stdlib_qualify)
         install_guest_qualification(rootfs)
+        install_c_api(rootfs, stdlib)
         print(
             "Fat Linux source installed in guest: "
             f"{installed.relative_to(rootfs)}"

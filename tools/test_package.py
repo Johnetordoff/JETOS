@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 import shutil
 import tempfile
@@ -51,6 +52,18 @@ def main() -> int:
         stdlib = temp / "stdlib"
         runtime.write_text("runtime\n", encoding="utf-8")
         stdlib.mkdir()
+        headers = temp / "prefix/include/python3.14"
+        pkgconfig = temp / "prefix/lib/pkgconfig"
+        headers.mkdir(parents=True)
+        pkgconfig.mkdir(parents=True)
+        (headers / "Python.h").write_text("/* Python.h */\n", encoding="utf-8")
+        (pkgconfig / "python-3.14.pc").write_text("Name: Python\n", encoding="utf-8")
+        (stdlib / "build-details.json").write_text(
+            json.dumps({"c_api": {"headers": str(headers), "pkgconfig_path": str(pkgconfig)}}),
+            encoding="utf-8",
+        )
+        guest_headers = rootfs / headers.relative_to("/")
+        guest_pkgconfig = rootfs / pkgconfig.relative_to("/")
         (source / "drivers/example").mkdir(parents=True)
         (source / "Makefile").write_text("VERSION = 6\n", encoding="utf-8")
         (source / "README").write_text("Linux source\n", encoding="utf-8")
@@ -95,6 +108,9 @@ def main() -> int:
             assert (rootfs / "usr/src/linux/Makefile").is_file()
             assert (rootfs / "jetos/tools/stdlib_qualify.py").is_file()
             assert (rootfs / "jetos/stdlib-qualify").read_text(encoding="utf-8") == "fast\n"
+            # build-details.json must describe files that exist in Fat.
+            assert (guest_headers / "Python.h").is_file()
+            assert (guest_pkgconfig / "python-3.14.pc").is_file()
             assert (rootfs / package.TEMPORARY_BULLSHIT_DIRNAME).is_dir()
             assert (rootfs / "jetos" / package.TEMPORARY_BULLSHIT_DIRNAME).is_dir()
 
@@ -111,6 +127,7 @@ def main() -> int:
             assert not (rootfs / "usr/src/linux").exists()
             assert not (rootfs / "jetos/tools/stdlib_qualify.py").exists()
             assert not (rootfs / "jetos/stdlib-qualify").exists()
+            assert not guest_headers.exists()
             assert not (rootfs / package.TEMPORARY_BULLSHIT_DIRNAME).exists()
             assert not (rootfs / "jetos" / package.TEMPORARY_BULLSHIT_DIRNAME).exists()
             assert output.read_bytes() == b"jetos-test-initramfs"
@@ -129,6 +146,14 @@ def main() -> int:
                 pass
             else:
                 raise AssertionError("Skinny profile accepted Fat qualification tooling")
+
+            (headers / "Python.h").unlink()
+            try:
+                package.install_c_api(rootfs, stdlib)
+            except SystemExit:
+                pass
+            else:
+                raise AssertionError("Fat accepted a C API without Python.h")
         finally:
             package.build.make_rootfs = original_make_rootfs
             package.build.build_initramfs = original_build_initramfs
