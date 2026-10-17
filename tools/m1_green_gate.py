@@ -61,6 +61,7 @@ def preflight() -> dict[str, object]:
         "tools": tools,
         "compiler": compiler,
         "configured_cc": configured_cc,
+        "kvm": common.kvm_usable(),
     }
 
 
@@ -74,11 +75,14 @@ def qemu_command() -> list[str]:
         raise RuntimeError("qemu-system-aarch64 disappeared after preflight")
     build_tool = common.load_build_tool()
     memory = build_tool.initramfs_vm_memory(INITRAMFS)
+    kvm = common.kvm_usable()
+    accel = "kvm" if kvm else "tcg"
+    cpu = "host" if kvm else "max"
     return [
         qemu,
-        "-accel", "tcg",
+        "-accel", accel,
         "-machine", "virt",
-        "-cpu", "max",
+        "-cpu", cpu,
         "-m", memory,
         "-kernel", str(KERNEL),
         "-initrd", str(INITRAMFS),

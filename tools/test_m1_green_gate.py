@@ -24,7 +24,8 @@ def main() -> int:
     assert '"qemu-system-aarch64"' in text
     assert '"console=ttyAMA0 rdinit=/init panic=-1"' in text
     assert '"-machine", "virt"' in text
-    assert '"-cpu", "max"' in text
+    assert 'accel = "kvm" if kvm else "tcg"' in text
+    assert 'cpu = "host" if kvm else "max"' in text
     assert '[sys.executable, "jetos.py", "test"]' in text
     assert '[sys.executable, "tools/dev.py", "build"]' in text
     assert 'GREEN_MARKER = "JETOS_GREEN_GATE_PREPROMPT=PASS"' in text
@@ -37,9 +38,11 @@ def main() -> int:
     with mock.patch.object(gate.platform, "system", return_value="Linux"), \
          mock.patch.object(gate.platform, "machine", return_value="aarch64"), \
          mock.patch.object(gate.shutil, "which", return_value="/usr/bin/tool"), \
-         mock.patch.object(gate.common, "compiler_command", return_value=(["/usr/bin/cc"], "cc")):
+         mock.patch.object(gate.common, "compiler_command", return_value=(["/usr/bin/cc"], "cc")), \
+         mock.patch.object(gate.common, "kvm_usable", return_value=True):
         host = gate.preflight()
         assert host["machine"] == "aarch64"
+        assert host["kvm"] is True
 
     with mock.patch.object(gate.platform, "system", return_value="Linux"), \
          mock.patch.object(gate.platform, "machine", return_value="x86_64"):
@@ -49,6 +52,26 @@ def main() -> int:
             assert "requires arm64 execution" in str(exc)
         else:
             raise AssertionError("M1 gate accepted x86_64 host")
+
+    fake_build = mock.Mock()
+    fake_build.initramfs_vm_memory.return_value = "1024M"
+    with mock.patch.object(gate.KERNEL, "is_file", return_value=True), \
+         mock.patch.object(gate.INITRAMFS, "is_file", return_value=True), \
+         mock.patch.object(gate.shutil, "which", return_value="/usr/bin/qemu-system-aarch64"), \
+         mock.patch.object(gate.common, "load_build_tool", return_value=fake_build), \
+         mock.patch.object(gate.common, "kvm_usable", return_value=True):
+        command = gate.qemu_command()
+        assert command[command.index("-accel") + 1] == "kvm"
+        assert command[command.index("-cpu") + 1] == "host"
+
+    with mock.patch.object(gate.KERNEL, "is_file", return_value=True), \
+         mock.patch.object(gate.INITRAMFS, "is_file", return_value=True), \
+         mock.patch.object(gate.shutil, "which", return_value="/usr/bin/qemu-system-aarch64"), \
+         mock.patch.object(gate.common, "load_build_tool", return_value=fake_build), \
+         mock.patch.object(gate.common, "kvm_usable", return_value=False):
+        command = gate.qemu_command()
+        assert command[command.index("-accel") + 1] == "tcg"
+        assert command[command.index("-cpu") + 1] == "max"
 
     print("JETOS M1 Green Gate contract: PASS")
     return 0
